@@ -899,42 +899,12 @@
 
   function wireHeaderDrag(th, opts) {
     const { tableType, selector, onDropReorder } = opts;
-    let isMouseDown = false;
-    let dragArmed = false;
-    let startX = 0;
-    let startY = 0;
 
-    th.draggable = false;
-    th.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      isMouseDown = true;
-      dragArmed = false;
-      startX = e.clientX;
-      startY = e.clientY;
-      th.draggable = false;
-    });
-    th.addEventListener('mousemove', (e) => {
-      if (!isMouseDown || dragArmed) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
-        dragArmed = true;
-        th.draggable = true;
-      }
-    });
-    const resetPointer = () => {
-      isMouseDown = false;
-      dragArmed = false;
-      th.draggable = false;
-    };
-    th.addEventListener('mouseup', resetPointer);
+    th.draggable = true;
+    th.style.cursor = 'grab';
     th.addEventListener('dragstart', (e) => {
-      if (!dragArmed) {
-        e.preventDefault();
-        return;
-      }
       activeHeaderDrag = { tableType, key: th.dataset.key };
-      sortClickSuppressedUntil = Date.now() + 250;
+      sortClickSuppressedUntil = Date.now() + 400;
       th.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', th.dataset.key);
@@ -962,7 +932,6 @@
       clearDragOverClasses(selector);
       th.classList.remove('dragging');
       activeHeaderDrag = null;
-      resetPointer();
     });
   }
   // Column filters maps (declare early for deep-link)
