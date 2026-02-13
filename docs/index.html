@@ -132,6 +132,8 @@
     }
     th.sorted-asc::after { content: ' ▲'; color: var(--burgundy); }
     th.sorted-desc::after { content: ' ▼'; color: var(--burgundy); }
+    th.dragging { opacity: 0.5; }
+    th.drag-over { border-left: 4px solid var(--burgundy); }
     tbody tr:hover {
       background: rgba(212, 175, 55, 0.05);
     }
@@ -858,6 +860,111 @@
   // Sort state defaults (declare before deep-link logic uses them)
   let sortKey = null, sortDir = 'desc';
   let linesSortKey = 'line_num', linesSortDir = 'asc';
+  let segmentsColumnOrder = [];
+  let ngramsColumnOrder = [];
+  let segmentsColumnDefs = [];
+  let ngramsColumnDefs = [];
+  let sortClickSuppressedUntil = 0;
+  let activeHeaderDrag = null;
+  const DRAG_THRESHOLD_PX = 6;
+
+  function applyColumnOrder(cols, order) {
+    if (!Array.isArray(cols) || cols.length === 0) return [];
+    if (!Array.isArray(order) || order.length === 0) return cols.slice();
+    const byKey = new Map(cols.map(c => [c.key, c]));
+    const ordered = [];
+    for (const key of order) {
+      if (!byKey.has(key)) continue;
+      ordered.push(byKey.get(key));
+      byKey.delete(key);
+    }
+    for (const c of cols) if (byKey.has(c.key)) ordered.push(c);
+    return ordered;
+  }
+
+  function moveKeyBeforeTarget(order, sourceKey, targetKey) {
+    const out = Array.isArray(order) ? order.slice() : [];
+    const from = out.indexOf(sourceKey);
+    const to = out.indexOf(targetKey);
+    if (from < 0 || to < 0 || from === to) return out;
+    const [moved] = out.splice(from, 1);
+    const insertAt = from < to ? to - 1 : to;
+    out.splice(insertAt, 0, moved);
+    return out;
+  }
+
+  function clearDragOverClasses(selector) {
+    document.querySelectorAll(selector).forEach(el => el.classList.remove('drag-over'));
+  }
+
+  function wireHeaderDrag(th, opts) {
+    const { tableType, selector, onDropReorder } = opts;
+    let isMouseDown = false;
+    let dragArmed = false;
+    let startX = 0;
+    let startY = 0;
+
+    th.draggable = false;
+    th.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isMouseDown = true;
+      dragArmed = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      th.draggable = false;
+    });
+    th.addEventListener('mousemove', (e) => {
+      if (!isMouseDown || dragArmed) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
+        dragArmed = true;
+        th.draggable = true;
+      }
+    });
+    const resetPointer = () => {
+      isMouseDown = false;
+      dragArmed = false;
+      th.draggable = false;
+    };
+    th.addEventListener('mouseup', resetPointer);
+    th.addEventListener('dragstart', (e) => {
+      if (!dragArmed) {
+        e.preventDefault();
+        return;
+      }
+      activeHeaderDrag = { tableType, key: th.dataset.key };
+      sortClickSuppressedUntil = Date.now() + 250;
+      th.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', th.dataset.key);
+    });
+    th.addEventListener('dragover', (e) => {
+      if (!activeHeaderDrag || activeHeaderDrag.tableType !== tableType) return;
+      if (activeHeaderDrag.key === th.dataset.key) return;
+      e.preventDefault();
+      th.classList.add('drag-over');
+      e.dataTransfer.dropEffect = 'move';
+    });
+    th.addEventListener('dragleave', () => th.classList.remove('drag-over'));
+    th.addEventListener('drop', (e) => {
+      if (!activeHeaderDrag || activeHeaderDrag.tableType !== tableType) return;
+      e.preventDefault();
+      clearDragOverClasses(selector);
+      const sourceKey = activeHeaderDrag.key;
+      const targetKey = th.dataset.key;
+      if (sourceKey && targetKey && sourceKey !== targetKey) {
+        sortClickSuppressedUntil = Date.now() + 250;
+        onDropReorder(sourceKey, targetKey);
+      }
+    });
+    th.addEventListener('dragend', () => {
+      clearDragOverClasses(selector);
+      th.classList.remove('dragging');
+      activeHeaderDrag = null;
+      resetPointer();
+    });
+  }
   // Column filters maps (declare early for deep-link)
   // Scope segments filters by current granularity (play/genre/act/scene/line/character)
   const segmentsFiltersByGran = new Map(); // gran -> Map(columnKey -> filter)
@@ -898,6 +1005,7 @@
     }
     if (sortKey) p.set('sk', sortKey);
     if (sortDir) p.set('sd', sortDir);
+    if (segmentsColumnOrder.length) p.set('co', segmentsColumnOrder.join(','));
     // Segment column filters (only for current granularity)
     const segFilters = getSegmentsFiltersMap();
     for (const [key, v] of segFilters.entries()) {
@@ -1335,7 +1443,7 @@
   (function applyStateFromURL(){
     const sp = new URLSearchParams(location.search);
     // New readable params first
-    if (sp.has('tab') || sp.has('q') || sp.has('l_q')) {
+    if (sp.has('tab') || sp.has('q') || sp.has('l_q') || sp.has('co')) {
       appliedDeepLinkState = true;
       try {
         // Display
@@ -1364,6 +1472,9 @@
         }
         if (sp.has('sk')) sortKey = sp.get('sk');
         if (sp.has('sd')) sortDir = sp.get('sd');
+        if (sp.has('co')) {
+          segmentsColumnOrder = sp.get('co').split(',').map(s => s.trim()).filter(Boolean);
+        }
         // Clear filters only for current granularity
         getSegmentsFiltersMap().clear();
         for (const [k, v] of sp.entries()) {
@@ -1632,14 +1743,18 @@
   // Column filters state (moved earlier)
   
   function setHeaders(cols){
+    segmentsColumnDefs = Array.isArray(cols) ? cols.slice() : [];
+    const orderedCols = applyColumnOrder(segmentsColumnDefs, segmentsColumnOrder);
+    segmentsColumnOrder = orderedCols.map(c => c.key);
     theadRow.innerHTML='';
-    cols.forEach(c => {
+    orderedCols.forEach(c => {
       const th = document.createElement('th');
       th.textContent = c.label;
       th.dataset.key = c.key;
       th.dataset.type = c.type || 'text';
       th.title = 'Click to sort';
       th.addEventListener('click', () => {
+        if (Date.now() < sortClickSuppressedUntil) return;
         if (sortKey === c.key) sortDir = (sortDir === 'asc' ? 'desc' : 'asc');
         else { sortKey = c.key; sortDir = c.defaultDir || 'desc'; }
         segmentsAllRows = sortRows(segmentsAllRows);
@@ -1656,6 +1771,15 @@
         showFilterPopover(th, c.key, (c.type||'text'), 'segments');
       });
       th.appendChild(icon);
+      wireHeaderDrag(th, {
+        tableType: 'segments',
+        selector: '#results thead th',
+        onDropReorder: (sourceKey, targetKey) => {
+          segmentsColumnOrder = moveKeyBeforeTarget(segmentsColumnOrder, sourceKey, targetKey);
+          setHeaders(segmentsColumnDefs);
+          renderSegmentsPage();
+        }
+      });
       theadRow.appendChild(th);
     });
     updateSortIndicators();
@@ -2829,20 +2953,26 @@
     let html = `<h3>${ngramLabel} Comparison Across ${segmentLabels.length} Segment${segmentLabels.length > 1 ? 's' : ''}</h3>`;
     const matchInfo = queryTerm ? ` matching ${ngramsMatchMode === 'regex' ? 'pattern' : 'term'} "${queryTerm}"` : '';
     html += `<p class="muted">Showing ${rows.length} unique ${ngramLabel.toLowerCase()}s${matchInfo}</p>`;
-    html += '<table id="ngramsTable"><thead><tr><th class="sortable-header" data-key="token" style="width: 30%;">' + ngramLabel + '</th>';
+    ngramsColumnDefs = [{ key: 'token', label: ngramLabel, width: '30%' }];
     
-    // Add column headers for each segment
+    // Build column definitions for each segment
     for (let i = 0; i < segmentLabels.length; i++) {
       if (displayMode === 'hits') {
-        html += `<th class="sortable-header" data-key="seg${i}_count">${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">Hits</span></th>`;
+        ngramsColumnDefs.push({ key: `seg${i}_count`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">Hits</span>` });
       } else if (displayMode === 'pct') {
-        html += `<th class="sortable-header" data-key="seg${i}_pct">${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">%</span></th>`;
+        ngramsColumnDefs.push({ key: `seg${i}_pct`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">%</span>` });
       } else { // both
-        html += `<th class="sortable-header" data-key="seg${i}_count">${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">Hits</span></th>`;
-        html += `<th class="sortable-header" data-key="seg${i}_pct">${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">%</span></th>`;
+        ngramsColumnDefs.push({ key: `seg${i}_count`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">Hits</span>` });
+        ngramsColumnDefs.push({ key: `seg${i}_pct`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">%</span>` });
       }
     }
-    
+    const orderedNgramCols = applyColumnOrder(ngramsColumnDefs, ngramsColumnOrder);
+    ngramsColumnOrder = orderedNgramCols.map(c => c.key);
+    html += '<table id="ngramsTable"><thead><tr>';
+    orderedNgramCols.forEach(c => {
+      const widthAttr = c.width ? ` style="width: ${c.width};"` : '';
+      html += `<th class="sortable-header" data-key="${c.key}"${widthAttr}>${c.label}</th>`;
+    });
     html += '</tr></thead><tbody id="ngramsTableBody"></tbody></table>';
     ngramTableContainer.innerHTML = html;
     
@@ -2851,6 +2981,7 @@
       th.style.cursor = 'pointer';
       th.title = 'Click to sort';
       th.addEventListener('click', () => {
+        if (Date.now() < sortClickSuppressedUntil) return;
         const key = th.dataset.key;
         if (ngramsSortKey === key) {
           ngramsSortDir = (ngramsSortDir === 'asc' ? 'desc' : 'asc');
@@ -2861,6 +2992,20 @@
         sortNgramsRows();
         ngramsCurrentPage = 1;
         renderNgramsComparisonPage();
+      });
+      wireHeaderDrag(th, {
+        tableType: 'ngrams',
+        selector: '#ngramsTable thead th',
+        onDropReorder: (sourceKey, targetKey) => {
+          ngramsColumnOrder = moveKeyBeforeTarget(ngramsColumnOrder, sourceKey, targetKey);
+          const headRow = document.querySelector('#ngramsTable thead tr');
+          if (!headRow) return;
+          const sourceEl = headRow.querySelector(`th[data-key="${sourceKey}"]`);
+          const targetEl = headRow.querySelector(`th[data-key="${targetKey}"]`);
+          if (!sourceEl || !targetEl) return;
+          headRow.insertBefore(sourceEl, targetEl);
+          renderNgramsComparisonPage();
+        }
       });
     });
     
@@ -2902,23 +3047,16 @@
     const displayMode = document.getElementById('ngramsDisplayMode').value;
     const totalPages = getTotalPages(ngramsAllRows.length, ngramsPageSize);
     const paginatedRows = paginateArray(ngramsAllRows, ngramsCurrentPage, ngramsPageSize);
+    const colKeys = Array.from(document.querySelectorAll('#ngramsTable thead th')).map(th => th.dataset.key);
     
     tbody.innerHTML = '';
     for (const row of paginatedRows) {
       const tr = document.createElement('tr');
-      let html = `<td>${row.token}</td>`;
-      
-      // Add cells for each segment
-      const numSegments = Math.floor((Object.keys(row).length - 2) / 2); // -2 for token and totalCount
-      for (let i = 0; i < numSegments; i++) {
-        if (displayMode === 'hits') {
-          html += `<td>${row[`seg${i}_count`]}</td>`;
-        } else if (displayMode === 'pct') {
-          html += `<td>${row[`seg${i}_pct`].toFixed(3)}%</td>`;
-        } else { // both
-          html += `<td>${row[`seg${i}_count`]}</td>`;
-          html += `<td>${row[`seg${i}_pct`].toFixed(3)}%</td>`;
-        }
+      let html = '';
+      for (const key of colKeys) {
+        if (key === 'token') html += `<td>${row.token}</td>`;
+        else if (key.endsWith('_pct')) html += `<td>${(Number(row[key]) || 0).toFixed(3)}%</td>`;
+        else html += `<td>${row[key] ?? 0}</td>`;
       }
       
       tr.innerHTML = html;
