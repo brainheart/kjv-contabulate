@@ -350,6 +350,21 @@
     .filter-popover .hint { font-size: 0.8rem; color: #7a6b5b; }
     .filter-popover .actions { display: flex; justify-content: space-between; margin-top: 0.4rem; }
     .filter-popover .link-btn { background: transparent; color: var(--burgundy); border: none; cursor: pointer; padding: 0.2rem 0.3rem; font-size: 0.9rem; }
+    .site-footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: #665544;
+      font-size: 0.95rem;
+    }
+    .site-footer a {
+      color: var(--burgundy);
+      text-decoration: none;
+    }
+    .site-footer a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -3396,5 +3411,10 @@
   }
 })();
 </script>
+  <footer class="site-footer">
+    Built by <a href="https://everydaysystems.com" target="_blank" rel="noopener">Reinhard Engels</a>
+    <span aria-hidden="true"> · </span>
+    <a href="https://github.com/brainheart/shakespeare-contabulate" target="_blank" rel="noopener">Source</a>
+  </footer>
 </body>
 </html>
