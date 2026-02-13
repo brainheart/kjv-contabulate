@@ -72,22 +72,32 @@ def parse_play(path: Path, play_id: int, metadata: dict = None):
         return lines
 
     def iter_sp_line_texts(sp_elem):
-        elems = [e for e in sp_elem if localname(e.tag) in ("l", "p")]
+        elems = [e for e in sp_elem.iter() if localname(e.tag) in ("l", "p")]
         if not elems:
-            elems = [sp_elem]
+            # Fallback: collect text in the speech while skipping the speaker label.
+            parts = []
+            if sp_elem.text:
+                parts.append(sp_elem.text)
+            for child in sp_elem:
+                if localname(child.tag) == "speaker":
+                    if child.tail:
+                        parts.append(child.tail)
+                    continue
+                parts.append(text_of(child))
+                if child.tail:
+                    parts.append(child.tail)
+            t = "".join(parts).strip()
+            if t:
+                yield t
+            return
         for ln in elems:
-            if localname(ln.tag) == "p":
-                parts = split_p_by_lb(ln)
-                if not parts:
-                    t = (text_of(ln) or "").strip()
-                    if t:
-                        parts = [t]
-                for part in parts:
-                    yield part
-            else:
+            parts = split_p_by_lb(ln)
+            if not parts:
                 t = (text_of(ln) or "").strip()
                 if t:
-                    yield t
+                    parts = [t]
+            for part in parts:
+                yield part
 
     def div_type(e):
         return (e.attrib.get("type","") or "").lower()
