@@ -1715,8 +1715,9 @@
   let ngramsSortKey = 'totalCount', ngramsSortDir = 'desc';
   // Column filters state (moved earlier)
   
-  function setHeaders(cols){
+  function setHeaders(cols, preserveOrder){
     segmentsColumnDefs = Array.isArray(cols) ? cols.slice() : [];
+    if (!preserveOrder) segmentsColumnOrder = [];
     const orderedCols = applyColumnOrder(segmentsColumnDefs, segmentsColumnOrder);
     segmentsColumnOrder = orderedCols.map(c => c.key);
     theadRow.innerHTML='';
@@ -1749,7 +1750,7 @@
         selector: '#results thead th',
         onDropReorder: (sourceKey, targetKey) => {
           segmentsColumnOrder = moveKeyBeforeTarget(segmentsColumnOrder, sourceKey, targetKey);
-          setHeaders(segmentsColumnDefs);
+          setHeaders(segmentsColumnDefs, true);
           renderSegmentsPage();
         }
       });
