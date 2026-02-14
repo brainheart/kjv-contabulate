@@ -1408,6 +1408,16 @@
   }
   
   initSegmentSelectors();
+
+  // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
+  const actTotals = new Map();
+  const playTotals = new Map();
+  for (const r of chunks) {
+    const k = `${r.play_id}:${r.act}`;
+    actTotals.set(k, (actTotals.get(k)||0) + (r.total_words||0));
+    playTotals.set(r.play_id, (playTotals.get(r.play_id)||0) + (r.total_words||0));
+  }
+
   // Apply state from deep link if present
   (function applyStateFromURL(){
     const sp = new URLSearchParams(location.search);
@@ -1699,13 +1709,7 @@
     return Math.max(1, Math.ceil(totalRows / pageSize));
   }
 
-  const actTotals = new Map();
-  const playTotals = new Map();
-  for (const r of chunks) {
-    const k = `${r.play_id}:${r.act}`;
-    actTotals.set(k, (actTotals.get(k)||0) + (r.total_words||0));
-    playTotals.set(r.play_id, (playTotals.get(r.play_id)||0) + (r.total_words||0));
-  }
+  // actTotals and playTotals moved before applyStateFromURL (see above)
 
   
   let ngramsSortKey = 'totalCount', ngramsSortDir = 'desc';
