@@ -3671,7 +3671,6 @@
     renderSelectedSegments();
     buildNgramsComparison();
   }
-})();
   // ==========================================
   // Play Detail Modal (TF-IDF analysis)
   // ==========================================
@@ -3728,7 +3727,7 @@
     overlay.innerHTML = `
       <div class="play-detail-modal" role="dialog" aria-modal="true" aria-label="Play detail">
         <div class="play-detail-head">
-          <button type="button" class="play-detail-close" aria-label="Close">\u00d7</button>
+          <button type="button" class="play-detail-close" aria-label="Close">×</button>
           <h3 id="playDetailTitle"></h3>
           <div class="play-detail-meta" id="playDetailMeta"></div>
         </div>
@@ -4000,6 +3999,7 @@
     }
   });
 
+})();
 </script>
   <footer class="site-footer">
     Built by <a href="https://everydaysystems.com" target="_blank" rel="noopener">Reinhard Engels</a>
