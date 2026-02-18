@@ -2043,7 +2043,7 @@
           ensureRow(p.play_id, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = Math.max(0, total_words - (n - 1));
-            return { id:p.abbr, play_id:p.play_id, title:p.title, genre:p.genre, first_year:p.first_performance_year||'', num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return { play_id:p.play_id, title:p.title, genre:p.genre, first_year:p.first_performance_year||'', num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
           });
         });
       } else if (granVal === 'genre') {
@@ -2235,7 +2235,7 @@
           const row = ensureRow(pid, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = Math.max(0, total_words - (n - 1));
-            return { id:p.abbr, play_id:pid, title:p.title, genre:p.genre, first_year:p.first_performance_year||'', num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return { play_id:pid, title:p.title, genre:p.genre, first_year:p.first_performance_year||'', num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
           });
           const d = denomFor(n,'play',{play_id:pid});
           row[`${termKeys[termIdx]}_count`] = count;
