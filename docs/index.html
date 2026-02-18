@@ -3964,7 +3964,7 @@
     const totalWords = play.total_words || 0;
     const totalLines = play.total_lines || 0;
     const scenes = shape.scenes.size || 0;
-    const acts = shape.acts.size || 0;
+    const acts = Array.from(shape.acts).filter(a => a >= 1 && a <= 5).length;
 
     modal.titleEl.textContent = play.title || play.abbr || 'Unknown play';
     modal.metaEl.textContent = `${play.genre || 'Unknown genre'} \u00b7 ${year} \u00b7 ${totalWords} words \u00b7 ${totalLines} lines \u00b7 ${scenes} scenes \u00b7 ${acts} acts`;
