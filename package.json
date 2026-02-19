@@ -1,0 +1,26 @@
+{
+  "name": "shakespeare-contabulate",
+  "version": "1.0.0",
+  "description": "This repository builds word/phrase counts and character aggregates from TEI XML files (Folger Shakespeare TEIs).",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brainheart/shakespeare-contabulate.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/brainheart/shakespeare-contabulate/issues"
+  },
+  "homepage": "https://github.com/brainheart/shakespeare-contabulate#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}
