@@ -180,6 +180,7 @@
   window.setHighlightEnabled = setHighlightEnabled;
   window.applyColorScale = applyColorScale;
   window.clearColorScale = clearColorScale;
+  window.applyOrClear = applyOrClear;
   window.applyColorScalesForVisibleTables = applyColorScalesForVisibleTables;
   window.getPalette = getPalette;
   window.renderLegend = renderLegend;
