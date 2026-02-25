@@ -770,6 +770,7 @@
 <script src="js/filter-popover.js"></script>
 <script src="js/color-scale.js"></script>
 <script src="js/play-detail.js"></script>
+<script src="js/lines-tab.js"></script>
 <script>
 (async function() {
   const q = document.getElementById('q');
@@ -796,6 +797,7 @@
   const getSortClickSuppressedUntil = window.getSortClickSuppressedUntil;
   const showFilterPopover = window.showFilterPopover;
   const closeFilterPopover = window.closeFilterPopover;
+  const createLinesTabController = window.createLinesTabController;
 
   // Color scale/highlight helpers are provided by docs/js/color-scale.js
   const colorScaleState = window.colorScaleState;
@@ -871,7 +873,7 @@
   }
   // Sort state defaults (declare before deep-link logic uses them)
   let sortKey = null, sortDir = 'desc';
-  let linesSortKey = 'line_num', linesSortDir = 'asc';
+  let linesTabController = null;
   let segmentsColumnOrder = [];
   let ngramsColumnOrder = [];
   let segmentsColumnDefs = [];
@@ -884,7 +886,6 @@
     if (!segmentsFiltersByGran.has(g)) segmentsFiltersByGran.set(g, new Map());
     return segmentsFiltersByGran.get(g);
   }
-  const linesColumnFilters = new Map();
   // Segments pagination and rows (declare early for deep-link)
   let segmentsCurrentPage = 1;
   let segmentsPageSize = 50;
@@ -1079,6 +1080,19 @@
   const chunkById = new Map(chunks.map(r => [r.scene_id, r]));
   const playsById = new Map(plays.map(p => [p.play_id, p]));
   const charactersById = new Map(characters.map(c => [c.character_id, c]));
+
+  // Lines tab controller — loaded from js/lines-tab.js
+  if (typeof createLinesTabController === 'function') {
+    linesTabController = createLinesTabController({
+      getAllLines: () => allLines,
+      getPlaysById: () => playsById,
+      colorScaleState: colorScaleState,
+      showFilterPopover: showFilterPopover,
+      applyOrClear: applyOrClear,
+      updateDeepLink: updateDeepLink
+    });
+    linesTabController.init();
+  }
 
   // Name normalization util used elsewhere
 
@@ -1417,12 +1431,13 @@
         if (st.lines.ngramMode) ln.value = st.lines.ngramMode;
         const lm = document.getElementById('linesMatchMode');
         if (st.lines.matchMode) lm.value = st.lines.matchMode;
-        if (st.lines.sortKey) linesSortKey = st.lines.sortKey;
-        if (st.lines.sortDir) linesSortDir = st.lines.sortDir;
-        linesColumnFilters.clear();
+        if (linesTabController && (st.lines.sortKey || st.lines.sortDir)) {
+          linesTabController.setSortState(st.lines.sortKey, st.lines.sortDir);
+        }
+        if (linesTabController) linesTabController.replaceColumnFilters(new Map());
         if (st.lines.filters) {
           const m2 = arrayToMap(st.lines.filters);
-          for (const [k,v] of m2.entries()) linesColumnFilters.set(k,v);
+          if (linesTabController) linesTabController.replaceColumnFilters(m2);
         }
       }
       // Trigger renders
@@ -1456,24 +1471,8 @@
     downloadCsv(filename, rows);
   }
   function downloadLinesCsvAll(filename) {
-    const thead = document.getElementById('linesHeadRow');
-    if (!thead || !linesAllRows || linesAllRows.length === 0) return;
-    const cols = Array.from(thead.children).map(th => ({
-      key: th.dataset.key,
-      label: (th.childNodes[0]?.textContent || th.textContent || '').replace('⚙','').trim()
-    }));
-    if (cols.length === 0) return;
-    const filtered = applyLinesFilters(linesAllRows);
-    const rows = [cols.map(c => c.label)];
-    for (const r of filtered) {
-      rows.push(cols.map(c => {
-        if (c.key === 'act') return r.act_label || r.act;
-        if (c.key === 'scene') return r.scene_label || r.scene;
-        if (c.key === 'text') return stripTags(r.text);
-        return r[c.key] ?? '';
-      }));
-    }
-    downloadCsv(filename, rows);
+    if (!linesTabController) return;
+    linesTabController.downloadCsvAll(filename);
   }
 
   // Simple debounce helper for responsive UI without spamming renders
@@ -2057,11 +2056,15 @@
   // Column filter popover — loaded from js/filter-popover.js
   if (typeof window.initFilterPopoverModule === 'function') {
     window.initFilterPopoverModule({
-      getStateMap: (table) => (table === 'lines' ? linesColumnFilters : getSegmentsFiltersMap()),
+      getStateMap: (table) => (table === 'lines'
+        ? (linesTabController ? linesTabController.getColumnFilters() : new Map())
+        : getSegmentsFiltersMap()),
       applyTableFilters: (table) => {
         if (table === 'lines') {
-          renderLinesPage();
-          updateLinesFilterActions();
+          if (linesTabController) {
+            linesTabController.renderPage();
+            linesTabController.updateFilterActions();
+          }
           updateDeepLink();
         } else {
           refreshSegmentsFromFilters();
@@ -2138,19 +2141,6 @@
       m.clear();
       refreshSegmentsFromFilters();
       updateSegmentsFilterActions();
-      updateDeepLink();
-    });
-  }
-
-  // Clear all filters for lines table
-  const clearLinesFiltersBtn = document.getElementById('clearLinesFilters');
-  if (clearLinesFiltersBtn) {
-    clearLinesFiltersBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (linesColumnFilters.size === 0) return;
-      linesColumnFilters.clear();
-      renderLinesPage();
-      updateLinesFilterActions();
       updateDeepLink();
     });
   }
@@ -2880,368 +2870,23 @@
     });
   }
 
-  // Lines tab state
-  let linesCurrentPage = 1;
-  let linesPageSize = 50;
-  let linesAllRows = [];
-  let linesPendingChanges = false;
-  let lastLinesState = {
-    query: '',
-    ngramMode: '',
-    matchMode: ''
-  };
-
-  // Removed lines play filter (use header regex filters instead)
-
-  function buildLinesRows(query) {
-    const isRegex = (document.getElementById('linesMatchMode').value === 'regex');
-    const n = parseInt(document.getElementById('linesNgramMode').value);
-
-    if (!allLines || allLines.length === 0) {
-      return null;
-    }
-
-    const rows = [];
-    
-    let searchPattern = null;
-    if (isRegex) {
-      try {
-        searchPattern = new RegExp(query, 'i');
-      } catch (e) {
-        return null;
-      }
-    }
-    const queryTokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, n);
-    const queryNgram = queryTokens.join(' ');
-
-    // Search through lines
-    for (const line of allLines) {
-      
-      let matches = false;
-      let highlightedText = line.text;
-      const ngrams = getLineNgrams(line, n);
-
-      if (isRegex) {
-        const re = new RegExp(searchPattern.source, searchPattern.flags.replace('g',''));
-        let count = 0;
-        const matchedNgrams = [];
-        for (const ng of ngrams) {
-          if (re.test(ng)) {
-            count++;
-            if (matchedNgrams.length <= 60) matchedNgrams.push(ng);
-          }
-        }
-        matches = count > 0;
-        if (matches && colorScaleState.highlightEnabled) {
-          const hl = matchedNgrams.length > 50 ? null : buildHighlightRegexFromNgrams(matchedNgrams);
-          highlightedText = hl ? highlightHTML(line.text, hl) : line.text;
-        }
-      } else {
-        if (!queryNgram) return null;
-        let count = 0;
-        for (const ng of ngrams) {
-          if (ng === queryNgram) count++;
-        }
-        matches = count > 0;
-        if (matches && colorScaleState.highlightEnabled) {
-          const hl = buildHighlightRegexFromNgrams([queryNgram]);
-          highlightedText = hl ? highlightHTML(line.text, hl) : line.text;
-        }
-      }
-
-      if (matches) {
-        const play = playsById.get(line.play_id);
-        rows.push({
-          play_title: play ? play.title : 'Unknown',
-          play_id: line.play_id,
-          act: line.act,
-          scene: line.scene,
-          line_num: line.line_num,
-          speaker: line.speaker || '',
-          text: highlightedText
-        });
-      }
-    }
-
-    return rows;
+  // Lines tab controller wrappers (module in docs/js/lines-tab.js)
+  function applyLinesFilters(rows) {
+    if (!linesTabController) return [];
+    return linesTabController.applyFilters(rows);
   }
-
-  function setLinesHeaders() {
-    const theadRow = document.getElementById('linesHeadRow');
-    const cols = [
-      { key: 'play_title', label: 'Play', defaultDir: 'asc', type: 'text' },
-      { key: 'act', label: 'Act', type: 'number' },
-      { key: 'scene', label: 'Scene', type: 'number' },
-      { key: 'line_num', label: 'Line #', type: 'number' },
-      { key: 'speaker', label: 'Speaker', defaultDir: 'asc', type: 'text' },
-      { key: 'text', label: 'Text', defaultDir: 'asc', type: 'text' }
-    ];
-
-    theadRow.innerHTML = '';
-    cols.forEach(c => {
-      const th = document.createElement('th');
-      th.textContent = c.label;
-      th.dataset.key = c.key;
-      th.dataset.type = c.type || 'text';
-      if (c.key !== 'text') {
-        th.title = 'Click to sort';
-        th.style.cursor = 'pointer';
-        th.addEventListener('click', () => {
-          if (linesSortKey === c.key) {
-            linesSortDir = (linesSortDir === 'asc' ? 'desc' : 'asc');
-          } else {
-            linesSortKey = c.key;
-            linesSortDir = c.defaultDir || 'desc';
-          }
-          linesAllRows = sortLinesRows(linesAllRows);
-          linesCurrentPage = 1;
-          renderLinesPage();
-        });
-      }
-      const icon = document.createElement('span');
-      icon.className = 'filter-icon';
-      icon.textContent = '⚙';
-      icon.title = 'Filter this column';
-      icon.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showFilterPopover(th, c.key, (c.type||'text'), 'lines');
-      });
-      th.appendChild(icon);
-      theadRow.appendChild(th);
-    });
-    updateLinesSortIndicators();
-  }
-
-  function sortLinesRows(rows) {
-    if (!linesSortKey || !rows) return rows;
-    rows.sort((a, b) => {
-      const av = a[linesSortKey];
-      const bv = b[linesSortKey];
-      if (typeof av === 'string' || typeof bv === 'string') {
-        return linesSortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-      }
-      return linesSortDir === 'asc' ? (av - bv) : (bv - av);
-    });
-    return rows;
-  }
-
-  function updateLinesSortIndicators() {
-    const theadRow = document.getElementById('linesHeadRow');
-    theadRow.querySelectorAll('th').forEach(th => {
-      th.classList.remove('sorted-asc', 'sorted-desc');
-      if (th.dataset.key === linesSortKey) {
-        th.classList.add(linesSortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
-      }
-    });
+  function renderLinesPage() {
+    if (!linesTabController) return;
+    linesTabController.renderPage();
   }
   function updateLinesFilterActions() {
-    const container = document.getElementById('linesFilterActions');
-    if (!container) return;
-    const count = linesColumnFilters.size;
-    if (count > 0) {
-      container.style.display = 'block';
-      const info = document.getElementById('linesFiltersInfo');
-      if (info) info.textContent = `(${count} active filter${count>1?'s':''})`;
-    } else {
-      container.style.display = 'none';
-    }
+    if (!linesTabController) return;
+    linesTabController.updateFilterActions();
   }
-
-  function applyLinesFilters(rows) {
-    if (!rows) return [];
-    let out = rows;
-    for (const [key, f] of linesColumnFilters.entries()) {
-      if (!f) continue;
-      const type = f.type || 'text';
-      if (type === 'number') {
-        const hasMin = f.min != null && f.min !== '';
-        const hasMax = f.max != null && f.max !== '';
-        if (!hasMin && !hasMax) continue;
-        const minVal = hasMin ? parseFloat(f.min) : -Infinity;
-        const maxVal = hasMax ? parseFloat(f.max) : Infinity;
-        out = out.filter(r => {
-          const v = Number(r[key]);
-          if (!Number.isFinite(v)) return false;
-          return v >= minVal && v <= maxVal;
-        });
-      } else {
-        if (!f.pattern) continue;
-        let re = null;
-        try { re = new RegExp(f.pattern, 'i'); } catch(e) { re = null; }
-        if (!re) continue;
-        out = out.filter(r => re.test(String(r[key] ?? '')));
-      }
-    }
-    return out;
-  }
-
-  function renderLinesPage() {
-    const tbody = document.getElementById('linesTableBody');
-    const filtered = applyLinesFilters(linesAllRows);
-    const totalPages = getTotalPages(filtered.length, linesPageSize);
-    const paginatedRows = paginateArray(filtered, linesCurrentPage, linesPageSize);
-
-    tbody.innerHTML = '';
-    for (const row of paginatedRows) {
-      const tr = document.createElement('tr');
-      const actVal = row.act_label || row.act;
-      const sceneVal = row.scene_label || row.scene;
-
-      const tdPlay = document.createElement('td');
-      if (row.play_id != null && typeof buildPlayDetailLink === 'function') tdPlay.appendChild(buildPlayDetailLink(row.play_title, row.play_id));
-      else tdPlay.textContent = row.play_title ?? '';
-
-      const tdAct = document.createElement('td');
-      tdAct.textContent = actVal;
-
-      const tdScene = document.createElement('td');
-      tdScene.textContent = sceneVal;
-
-      const tdLineNum = document.createElement('td');
-      tdLineNum.textContent = row.line_num;
-
-      const tdSpeaker = document.createElement('td');
-      tdSpeaker.textContent = row.speaker;
-
-      const tdText = document.createElement('td');
-      tdText.className = 'line-text';
-      tdText.innerHTML = row.text;
-
-      tr.appendChild(tdPlay);
-      tr.appendChild(tdAct);
-      tr.appendChild(tdScene);
-      tr.appendChild(tdLineNum);
-      tr.appendChild(tdSpeaker);
-      tr.appendChild(tdText);
-      tbody.appendChild(tr);
-    }
-
-    updateLinesSortIndicators();
-
-    const paginationDiv = document.getElementById('linesPagination');
-    paginationDiv.style.display = filtered.length > 25 ? 'flex' : 'none';
-
-    document.getElementById('linesPageInfo').textContent = `Page ${linesCurrentPage} of ${totalPages}`;
-    document.getElementById('linesTotalInfo').textContent = `(${filtered.length} total lines)`;
-
-    document.getElementById('linesFirstPage').disabled = linesCurrentPage === 1;
-    document.getElementById('linesPrevPage').disabled = linesCurrentPage === 1;
-    document.getElementById('linesNextPage').disabled = linesCurrentPage === totalPages;
-    document.getElementById('linesLastPage').disabled = linesCurrentPage === totalPages;
-    applyOrClear('#linesResults');
-    updateDeepLink();
-    updateLinesFilterActions();
-  }
-
   function doLinesSearch() {
-    const query = document.getElementById('linesQuery').value.trim();
-    if (!query) {
-      document.getElementById('linesTableBody').innerHTML = '';
-      document.getElementById('linesPagination').style.display = 'none';
-      updateLinesFilterActions();
-      return;
-    }
-
-    const rows = buildLinesRows(query);
-    if (!rows) {
-      document.getElementById('linesTableBody').innerHTML = '<tr><td colspan="6" class="warning">Invalid search or no data available.</td></tr>';
-      document.getElementById('linesPagination').style.display = 'none';
-      updateLinesFilterActions();
-      return;
-    }
-
-    if (rows.length === 0) {
-      document.getElementById('linesTableBody').innerHTML = '<tr><td colspan="6" class="muted">No lines matched.</td></tr>';
-      document.getElementById('linesPagination').style.display = 'none';
-      updateLinesFilterActions();
-      return;
-    }
-
-    linesAllRows = sortLinesRows(rows);
-    linesCurrentPage = 1;
-    setLinesHeaders();
-    renderLinesPage();
-    saveLinesState();
+    if (!linesTabController) return;
+    linesTabController.doSearch();
   }
-
-  function checkLinesPendingChanges() {
-    const currentState = {
-      query: document.getElementById('linesQuery').value.trim(),
-      ngramMode: document.getElementById('linesNgramMode').value,
-      matchMode: document.getElementById('linesMatchMode').value
-    };
-
-    linesPendingChanges = 
-      currentState.query !== lastLinesState.query ||
-      currentState.ngramMode !== lastLinesState.ngramMode ||
-      currentState.matchMode !== lastLinesState.matchMode;
-
-    updateLinesRefreshButton();
-  }
-
-  function updateLinesRefreshButton() {
-    const btn = document.getElementById('linesRefresh');
-    if (!btn) return;
-    if (linesPendingChanges) {
-      btn.classList.add('refresh-btn-pending');
-      btn.textContent = 'Refresh ⟳';
-    } else {
-      btn.classList.remove('refresh-btn-pending');
-      btn.textContent = 'Refresh';
-    }
-  }
-
-  function saveLinesState() {
-    lastLinesState = {
-      query: document.getElementById('linesQuery').value.trim(),
-      ngramMode: document.getElementById('linesNgramMode').value,
-      matchMode: document.getElementById('linesMatchMode').value
-    };
-    linesPendingChanges = false;
-    updateLinesRefreshButton();
-  }
-
-  // Lines tab event listeners
-  const debouncedDoLinesSearch = debounce(doLinesSearch, 250);
-  document.getElementById('linesQuery').addEventListener('keydown', e => { if (e.key === 'Enter') doLinesSearch(); });
-  document.getElementById('linesQuery').addEventListener('input', () => { checkLinesPendingChanges(); debouncedDoLinesSearch(); });
-  document.getElementById('linesNgramMode').addEventListener('change', () => { checkLinesPendingChanges(); doLinesSearch(); });
-  document.getElementById('linesMatchMode').addEventListener('change', () => { checkLinesPendingChanges(); doLinesSearch(); });
-  const downloadLinesBtn = document.getElementById('downloadLinesCsv');
-  if (downloadLinesBtn) {
-    downloadLinesBtn.addEventListener('click', () => {
-      const name = `lines-${Date.now()}.csv`;
-      downloadLinesCsvAll(name);
-    });
-  }
-
-  // Lines pagination controls
-  document.getElementById('linesFirstPage').addEventListener('click', () => {
-    linesCurrentPage = 1;
-    renderLinesPage();
-  });
-  document.getElementById('linesPrevPage').addEventListener('click', () => {
-    if (linesCurrentPage > 1) {
-      linesCurrentPage--;
-      renderLinesPage();
-    }
-  });
-  document.getElementById('linesNextPage').addEventListener('click', () => {
-    const totalPages = getTotalPages(linesAllRows.length, linesPageSize);
-    if (linesCurrentPage < totalPages) {
-      linesCurrentPage++;
-      renderLinesPage();
-    }
-  });
-  document.getElementById('linesLastPage').addEventListener('click', () => {
-    linesCurrentPage = getTotalPages(linesAllRows.length, linesPageSize);
-    renderLinesPage();
-  });
-  document.getElementById('linesPageSize').addEventListener('change', (e) => {
-    linesPageSize = parseInt(e.target.value);
-    linesCurrentPage = 1;
-    renderLinesPage();
-  });
 
   // initial state for contexts tab (only if no deep link state applied)
   if (!appliedDeepLinkState) {
