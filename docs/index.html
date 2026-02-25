@@ -767,6 +767,7 @@
 
 <script src="js/utils.js"></script>
 <script src="js/table-ui.js"></script>
+<script src="js/filter-popover.js"></script>
 <script src="js/color-scale.js"></script>
 <script src="js/play-detail.js"></script>
 <script>
@@ -793,6 +794,8 @@
   const moveKeyBeforeTarget = window.moveKeyBeforeTarget;
   const wireHeaderDrag = window.wireHeaderDrag;
   const getSortClickSuppressedUntil = window.getSortClickSuppressedUntil;
+  const showFilterPopover = window.showFilterPopover;
+  const closeFilterPopover = window.closeFilterPopover;
 
   // Color scale/highlight helpers are provided by docs/js/color-scale.js
   const colorScaleState = window.colorScaleState;
@@ -2051,78 +2054,22 @@
     renderSegmentsPage();
   }
 
-  // Column filter popover
-  let currentFilterPopover = null;
-  function closeFilterPopover() {
-    if (currentFilterPopover && currentFilterPopover.parentNode) {
-      currentFilterPopover.parentNode.removeChild(currentFilterPopover);
-    }
-    currentFilterPopover = null;
-  }
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFilterPopover(); });
-  document.addEventListener('click', (e) => {
-    if (currentFilterPopover && !currentFilterPopover.contains(e.target) && !(e.target.classList && e.target.classList.contains('filter-icon'))) {
-      closeFilterPopover();
-    }
-  });
-  function showFilterPopover(th, key, type, table) {
-    closeFilterPopover();
-    const rect = th.getBoundingClientRect();
-    const pop = document.createElement('div');
-    pop.className = 'filter-popover';
-    let stateMap = (table === 'lines') ? linesColumnFilters : getSegmentsFiltersMap();
-    const existing = stateMap.get(key) || { type };
-    if (type === 'number') {
-      pop.innerHTML = `
-        <h4>Filter: ${th.textContent.replace('⚙','').trim()}</h4>
-        <div class="row"><label style="width:3rem;">Min</label><input type="number" step="any" class="f-min" value="${existing.min ?? ''}" placeholder="min"></div>
-        <div class="row"><label style="width:3rem;">Max</label><input type="number" step="any" class="f-max" value="${existing.max ?? ''}" placeholder="max"></div>
-        <div class="actions"><button class="link-btn f-clear">Clear</button><button class="link-btn f-close">Close</button></div>
-        <div class="hint">Tip: for % columns you may enter 5 or 0.05</div>
-      `;
-    } else {
-      pop.innerHTML = `
-        <h4>Filter: ${th.textContent.replace('⚙','').trim()}</h4>
-        <div class="row"><input type="text" class="f-pattern" value="${existing.pattern ?? ''}" placeholder="Regex pattern (case-insensitive)"></div>
-        <div class="actions"><button class="link-btn f-clear">Clear</button><button class="link-btn f-close">Close</button></div>
-        <div class="hint">Examples: ^Act, Juliet$ , love|death</div>
-      `;
-    }
-    document.body.appendChild(pop);
-    currentFilterPopover = pop;
-    const top = rect.bottom + window.scrollY + 6;
-    let left = rect.left + window.scrollX;
-    if (left + pop.offsetWidth > window.scrollX + window.innerWidth) {
-      left = window.scrollX + window.innerWidth - pop.offsetWidth - 12;
-    }
-    pop.style.top = top + 'px';
-    pop.style.left = left + 'px';
-
-    const applyNumber = debounce(() => {
-      const minV = pop.querySelector('.f-min').value;
-      const maxV = pop.querySelector('.f-max').value;
-      if (minV === '' && maxV === '') stateMap.delete(key);
-      else stateMap.set(key, { type: 'number', min: minV, max: maxV });
-      if (table === 'lines') { renderLinesPage(); updateLinesFilterActions(); updateDeepLink(); } else { refreshSegmentsFromFilters(); updateSegmentsFilterActions(); updateDeepLink(); }
-    }, 200);
-    const applyText = debounce(() => {
-      const pat = pop.querySelector('.f-pattern').value.trim();
-      if (!pat) stateMap.delete(key);
-      else stateMap.set(key, { type: 'text', pattern: pat });
-      if (table === 'lines') { renderLinesPage(); updateLinesFilterActions(); updateDeepLink(); } else { refreshSegmentsFromFilters(); updateSegmentsFilterActions(); updateDeepLink(); }
-    }, 200);
-    if (type === 'number') {
-      pop.querySelector('.f-min').addEventListener('input', applyNumber);
-      pop.querySelector('.f-max').addEventListener('input', applyNumber);
-    } else {
-      pop.querySelector('.f-pattern').addEventListener('input', applyText);
-    }
-    pop.querySelector('.f-clear').addEventListener('click', (e) => {
-      e.preventDefault();
-      stateMap.delete(key);
-      if (table === 'lines') { renderLinesPage(); updateLinesFilterActions(); updateDeepLink(); } else { refreshSegmentsFromFilters(); updateSegmentsFilterActions(); updateDeepLink(); }
+  // Column filter popover — loaded from js/filter-popover.js
+  if (typeof window.initFilterPopoverModule === 'function') {
+    window.initFilterPopoverModule({
+      getStateMap: (table) => (table === 'lines' ? linesColumnFilters : getSegmentsFiltersMap()),
+      applyTableFilters: (table) => {
+        if (table === 'lines') {
+          renderLinesPage();
+          updateLinesFilterActions();
+          updateDeepLink();
+        } else {
+          refreshSegmentsFromFilters();
+          updateSegmentsFilterActions();
+          updateDeepLink();
+        }
+      }
     });
-    pop.querySelector('.f-close').addEventListener('click', (e) => { e.preventDefault(); closeFilterPopover(); });
   }
   
   function renderSegmentsPage() {
