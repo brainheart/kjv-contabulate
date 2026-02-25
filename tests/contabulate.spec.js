@@ -184,6 +184,41 @@ test.describe('Deep Links', () => {
       expect(count).toBeGreaterThan(0);
     }
   });
+
+  test('deep link preserves mixed exact and regex term chips', async ({ page }) => {
+    await page.goto('/');
+    await waitForDataLoaded(page);
+
+    await page.selectOption('#gran', 'play');
+    await page.fill('#q', 'love');
+    await page.press('#q', 'Enter');
+
+    await page.selectOption('#matchMode', 'regex');
+    await page.fill('#q', '^death$');
+    await page.press('#q', 'Enter');
+
+    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
+
+    const headersBefore = await page.locator('#results thead th').allTextContents();
+    expect(headersBefore.some(t => t.includes('"love"'))).toBeTruthy();
+    expect(headersBefore.some(t => t.includes('/^death$/'))).toBeTruthy();
+
+    const deepLink = await page.locator('.deep-link').first().getAttribute('href');
+    expect(deepLink).toBeTruthy();
+    expect(deepLink).toContain('ts=');
+
+    await page.goto(deepLink);
+    await waitForDataLoaded(page);
+    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
+
+    const chips = await page.locator('#termsList .term-pill').allTextContents();
+    expect(chips.some(t => t.includes('love'))).toBeTruthy();
+    expect(chips.some(t => t.includes('/^death$/'))).toBeTruthy();
+
+    const headersAfter = await page.locator('#results thead th').allTextContents();
+    expect(headersAfter.some(t => t.includes('"love"'))).toBeTruthy();
+    expect(headersAfter.some(t => t.includes('/^death$/'))).toBeTruthy();
+  });
 });
 
 // ==========================================

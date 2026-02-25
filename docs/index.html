@@ -804,15 +804,55 @@
   const applyOrClear = window.applyOrClear;
   const applyColorScalesForVisibleTables = window.applyColorScalesForVisibleTables;
   const renderAllLegends = window.renderAllLegends;
+  function normalizeTermMode(mode) {
+    return mode === 'regex' ? 'regex' : 'exact';
+  }
+  function toTermSpec(value, fallbackMode = 'exact') {
+    if (value == null) return null;
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) return null;
+      return { text, mode: normalizeTermMode(fallbackMode) };
+    }
+    if (typeof value === 'object') {
+      const text = String(value.text ?? value.t ?? '').trim();
+      if (!text) return null;
+      return { text, mode: normalizeTermMode(value.mode ?? value.m ?? fallbackMode) };
+    }
+    const text = String(value).trim();
+    if (!text) return null;
+    return { text, mode: normalizeTermMode(fallbackMode) };
+  }
+  function cloneTermSpec(value, fallbackMode = 'exact') {
+    const spec = toTermSpec(value, fallbackMode);
+    return spec ? { text: spec.text, mode: spec.mode } : null;
+  }
+  function termSpecKey(value, fallbackMode = 'exact') {
+    const spec = toTermSpec(value, fallbackMode);
+    if (!spec) return '';
+    if (spec.mode === 'regex') return `regex:${spec.text.trim()}`;
+    return `exact:${normalizeTerm(spec.text)}`;
+  }
+  function formatTermSpecForChip(value) {
+    const spec = toTermSpec(value, 'exact');
+    if (!spec) return '';
+    return spec.mode === 'regex' ? `/${spec.text}/` : spec.text;
+  }
+  function formatTermSpecForHeader(value) {
+    const spec = toTermSpec(value, 'exact');
+    if (!spec) return '""';
+    return spec.mode === 'regex' ? `/${spec.text}/` : `"${spec.text}"`;
+  }
   function pruneExtraTermsAgainstPrimary() {
     // Legacy function name retained: chips are now the canonical term list.
     const seen = new Set();
     const filtered = [];
     extraTerms.forEach((t) => {
-      const norm = normalizeTerm(t || '');
-      if (!norm || seen.has(norm)) return;
-      seen.add(norm);
-      filtered.push(t.trim());
+      const spec = toTermSpec(t, matchMode.value);
+      const key = termSpecKey(spec);
+      if (!spec || !key || seen.has(key)) return;
+      seen.add(key);
+      filtered.push(spec);
     });
     if (filtered.length !== extraTerms.length) {
       extraTerms = filtered;
@@ -820,12 +860,12 @@
     }
   }
   function getActiveTerms() {
-    return extraTerms.map(t => t && t.trim()).filter(Boolean);
+    return extraTerms.map(t => cloneTermSpec(t, matchMode.value)).filter(Boolean);
   }
   function getActiveTermsStateParts() {
     const terms = getActiveTerms();
     return {
-      primary: terms[0] || '',
+      primary: terms[0] || null,
       extras: terms.slice(1)
     };
   }
@@ -833,12 +873,13 @@
     const seen = new Set();
     const merged = [];
     const add = (term) => {
-      const norm = normalizeTerm(term || '');
-      if (!norm || seen.has(norm)) return;
-      seen.add(norm);
-      merged.push(String(term).trim());
+      const spec = toTermSpec(term, matchMode.value);
+      const key = termSpecKey(spec);
+      if (!spec || !key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(spec);
     };
-    add(primaryTerm || '');
+    add(primaryTerm);
     (extraTermList || []).forEach(add);
     extraTerms = merged;
     renderExtraTerms();
@@ -846,7 +887,7 @@
   }
   function renderExtraTerms() {
     if (!termsList) return;
-    const terms = extraTerms.filter(t => t && t.trim());
+    const terms = extraTerms.map(t => cloneTermSpec(t, matchMode.value)).filter(Boolean);
     if (terms.length === 0) {
       termsList.classList.add('muted');
       termsList.textContent = 'No columns yet. Add a term above to start comparing.';
@@ -854,10 +895,12 @@
     }
     termsList.classList.remove('muted');
     termsList.innerHTML = '';
-    terms.forEach((term, idx) => {
+    terms.forEach((termSpec, idx) => {
+      const chipText = formatTermSpecForChip(termSpec);
+      const typeLabel = termSpec.mode === 'regex' ? 'regex' : 'term';
       const pill = document.createElement('span');
       pill.className = 'term-pill';
-      pill.innerHTML = `<span>${escapeHTML(term)}</span><button type="button" class="remove-term" data-idx="${idx}" aria-label="Remove term ${escapeHTML(term)}">×</button>`;
+      pill.innerHTML = `<span>${escapeHTML(chipText)}</span><button type="button" class="remove-term" data-idx="${idx}" aria-label="Remove ${typeLabel} ${escapeHTML(termSpec.text)}">×</button>`;
       termsList.appendChild(pill);
     });
     termsList.querySelectorAll('.remove-term').forEach(btn => {
@@ -873,12 +916,12 @@
     });
   }
   function addExtraTerm(term) {
-    const val = (term ?? '').trim();
-    if (!val) return false;
-    const normVal = normalizeTerm(val);
-    const existing = extraTerms.map(normalizeTerm);
-    if (existing.includes(normVal)) return false;
-    extraTerms.push(val);
+    const spec = toTermSpec(term, matchMode.value);
+    if (!spec) return false;
+    const key = termSpecKey(spec);
+    const existing = extraTerms.map(t => termSpecKey(t, matchMode.value));
+    if (!key || existing.includes(key)) return false;
+    extraTerms.push(spec);
     renderExtraTerms();
     checkSegmentsPendingChanges();
     doSearch();
@@ -917,11 +960,14 @@
     p.set('hl', colorScaleState.highlightEnabled ? '1' : '0');
     // Segments
     const segTermState = getActiveTermsStateParts();
-    p.set('q', segTermState.primary || '');
+    p.set('q', segTermState.primary ? segTermState.primary.text : '');
     p.set('nm', ngramMode.value);
     p.set('gran', gran.value);
     p.set('mm', matchMode.value);
-    const extras = segTermState.extras.map(t => t.trim()).filter(Boolean);
+    const allTermSpecs = [segTermState.primary, ...segTermState.extras].filter(Boolean);
+    const extras = segTermState.extras.map(t => (t && t.text ? t.text.trim() : '')).filter(Boolean);
+    const termSpecsParam = encodeTermSpecsParam(allTermSpecs);
+    if (termSpecsParam) p.set('ts', termSpecsParam);
     if (extras.length) {
       try {
         p.set('qt', encodeURIComponent(JSON.stringify(extras)));
@@ -980,6 +1026,29 @@
     // Legacy: pipe-separated string
     return raw.split('|').map(t => t.trim()).filter(Boolean);
   }
+  function encodeTermSpecsParam(termSpecs) {
+    const compact = (termSpecs || [])
+      .map(t => toTermSpec(t, 'exact'))
+      .filter(Boolean)
+      .map(t => ({ t: t.text, m: t.mode }));
+    if (!compact.length) return '';
+    try {
+      return encodeURIComponent(JSON.stringify(compact));
+    } catch (e) {
+      return '';
+    }
+  }
+  function decodeTermSpecsParam(raw) {
+    if (!raw) return [];
+    try {
+      const decoded = decodeURIComponent(raw);
+      const arr = JSON.parse(decoded);
+      if (!Array.isArray(arr)) return [];
+      return arr.map(t => toTermSpec(t, 'exact')).filter(Boolean);
+    } catch (e) {
+      return [];
+    }
+  }
   function arrayToMap(arr) {
     const m = new Map();
     if (!Array.isArray(arr)) return m;
@@ -1016,6 +1085,7 @@
   // Last search state for segments
   let lastSegmentsState = {
     query: '',
+    queryMode: '',
     ngramMode: '',
     gran: '',
     matchMode: '',
@@ -1163,7 +1233,7 @@
   (function applyStateFromURL(){
     const sp = new URLSearchParams(location.search);
     // New readable params first
-    if (sp.has('tab') || sp.has('q') || sp.has('l_q') || sp.has('co')) {
+    if (sp.has('tab') || sp.has('q') || sp.has('ts') || sp.has('l_q') || sp.has('co')) {
       appliedDeepLinkState = true;
       try {
         // Display
@@ -1174,6 +1244,7 @@
         // Tab (ignored; segments only)
         // Segments
         if (sp.has('q')) q.value = sp.get('q');
+        else if (sp.has('ts')) q.value = '';
         if (sp.has('nm')) ngramMode.value = sp.get('nm');
         if (sp.has('gran')) gran.value = sp.get('gran');
         if (sp.has('mm')) matchMode.value = sp.get('mm');
@@ -1185,10 +1256,12 @@
           showZeroRows = sp.get('zr') === '1';
           if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
         }
-        if (sp.has('qt')) {
-          extraTerms = decodeExtrasParam(sp.get('qt'));
+        if (sp.has('ts')) {
+          setActiveTermsFromRestoredState(null, decodeTermSpecsParam(sp.get('ts')), true);
+        } else {
+          const restoredExtras = sp.has('qt') ? decodeExtrasParam(sp.get('qt')) : [];
+          setActiveTermsFromRestoredState(sp.has('q') ? q.value : '', restoredExtras, true);
         }
-        setActiveTermsFromRestoredState(sp.has('q') ? q.value : '', extraTerms, true);
         if (sp.has('sk')) sortKey = sp.get('sk');
         if (sp.has('sd')) sortDir = sp.get('sd');
         if (sp.has('co')) {
@@ -1445,10 +1518,9 @@
 
   function buildRowsForTerms(terms){
     const granVal = gran.value;
-    const isRegex = (matchMode.value === 'regex');
     const ngramModeVal = ngramMode.value;
     const n = parseInt(ngramModeVal, 10);
-    const activeTerms = (terms || []).map(t => t.trim()).filter(Boolean);
+    const activeTerms = (terms || []).map(t => toTermSpec(t, matchMode.value)).filter(Boolean);
     const hasTerms = activeTerms.length > 0;
 
     const termKeys = activeTerms.map((_, i) => `t${i}`);
@@ -1466,10 +1538,12 @@
       ? (n === 1 ? tokensChar : n === 2 ? tokensChar2 : tokensChar3)
       : (n === 1 ? tokens : n === 2 ? tokens2 : tokens3);
 
-    const compiledRegexes = [];
-    if (isRegex && hasTerms) {
-      for (const term of activeTerms) {
-        try { compiledRegexes.push(new RegExp(term.trim(), 'i')); }
+    const compiledRegexes = new Array(activeTerms.length).fill(null);
+    if (hasTerms) {
+      for (let termIdx = 0; termIdx < activeTerms.length; termIdx++) {
+        const termSpec = activeTerms[termIdx];
+        if (!termSpec || termSpec.mode !== 'regex') continue;
+        try { compiledRegexes[termIdx] = new RegExp(termSpec.text.trim(), 'i'); }
         catch (e) {
           theadRow.innerHTML = '';
           tbody.innerHTML = `<tr><td class="warning">Invalid regex: ${e.message}</td></tr>`;
@@ -1499,19 +1573,22 @@
     }
     function buildTermColumns(includeCounts = true, includePct = true) {
       const cols = [];
-      activeTerms.forEach((term, idx) => {
-        if (includeCounts) cols.push({ key: `${termKeys[idx]}_count`, label: `"${term}"`, type: 'number', defaultDir: 'desc' });
-        if (includePct) cols.push({ key: `${termKeys[idx]}_pct`, label: `"${term}" %`, type: 'number', defaultDir: 'desc' });
+      activeTerms.forEach((termSpec, idx) => {
+        const label = formatTermSpecForHeader(termSpec);
+        if (includeCounts) cols.push({ key: `${termKeys[idx]}_count`, label, type: 'number', defaultDir: 'desc' });
+        if (includePct) cols.push({ key: `${termKeys[idx]}_pct`, label: `${label} %`, type: 'number', defaultDir: 'desc' });
       });
       return cols;
     }
     function getPostingsForTerm(termIdx) {
-      if (isRegex) {
+      const termSpec = activeTerms[termIdx];
+      if (!termSpec) return [];
+      if (termSpec.mode === 'regex') {
         const pattern = compiledRegexes[termIdx];
         if (!pattern) return [];
         return aggregatePostings(Object.keys(idx).filter(k => pattern.test(k)).map(k => idx[k]), n);
       }
-      const parts = activeTerms[termIdx].toLowerCase().split(/\s+/).filter(Boolean);
+      const parts = termSpec.text.toLowerCase().split(/\s+/).filter(Boolean);
       const key = parts.slice(0, n).join(' ');
       return idx[key] || [];
     }
@@ -1578,24 +1655,18 @@
         return null;
       }
       const lineMatchers = [];
-      if (isRegex) {
-        for (const term of activeTerms) {
-          try {
-            const re = new RegExp(term.trim(), 'i');
-            lineMatchers.push({ type: 'regex', re });
-          } catch (e) {
-            theadRow.innerHTML = '';
-            tbody.innerHTML = `<tr><td class="warning">Invalid regex: ${e.message}</td></tr>`;
-            return null;
-          }
+      activeTerms.forEach((termSpec, termIdx) => {
+        if (!termSpec) { lineMatchers.push(null); return; }
+        if (termSpec.mode === 'regex') {
+          const re = compiledRegexes[termIdx];
+          if (!re) { lineMatchers.push(null); return; }
+          lineMatchers.push({ type: 'regex', re });
+          return;
         }
-      } else {
-        activeTerms.forEach(term => {
-          const terms = term.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, n);
-          if (terms.length === 0) { lineMatchers.push({ type: 'exact', ngram: null }); return; }
-          lineMatchers.push({ type: 'exact', ngram: terms.join(' ') });
-        });
-      }
+        const parts = termSpec.text.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, n);
+        if (parts.length === 0) { lineMatchers.push({ type: 'exact', ngram: null }); return; }
+        lineMatchers.push({ type: 'exact', ngram: parts.join(' ') });
+      });
 
       for (const ln of allLines) {
         const clean = (ln.text || '').toString().replace(/\s+/g, ' ').trim();
@@ -2104,19 +2175,22 @@
   // Check if segments settings have changed
   function checkSegmentsPendingChanges() {
     const segTermState = getActiveTermsStateParts();
+    const primary = segTermState.primary ? cloneTermSpec(segTermState.primary, 'exact') : null;
     const currentState = {
-      query: segTermState.primary,
+      query: primary ? primary.text : '',
+      queryMode: primary ? primary.mode : '',
       ngramMode: ngramMode.value,
       gran: gran.value,
       matchMode: matchMode.value,
       termDisplayMode,
       showZeroRows
     };
-    const currentExtras = segTermState.extras.map(normalizeTerm).filter(Boolean).sort();
-    const lastExtras = (lastSegmentsState.extraTerms || []).map(normalizeTerm).filter(Boolean).sort();
+    const currentExtras = segTermState.extras.map(t => termSpecKey(t, 'exact')).filter(Boolean).sort();
+    const lastExtras = (lastSegmentsState.extraTerms || []).map(t => termSpecKey(t, 'exact')).filter(Boolean).sort();
     
     const hasChanges = 
       currentState.query !== lastSegmentsState.query ||
+      currentState.queryMode !== (lastSegmentsState.queryMode || '') ||
       currentState.ngramMode !== lastSegmentsState.ngramMode ||
       currentState.gran !== lastSegmentsState.gran ||
       currentState.matchMode !== lastSegmentsState.matchMode ||
@@ -2143,14 +2217,16 @@
   
   function saveSegmentsState() {
     const segTermState = getActiveTermsStateParts();
+    const primary = segTermState.primary ? cloneTermSpec(segTermState.primary, 'exact') : null;
     lastSegmentsState = {
-      query: segTermState.primary,
+      query: primary ? primary.text : '',
+      queryMode: primary ? primary.mode : '',
       ngramMode: ngramMode.value,
       gran: gran.value,
       matchMode: matchMode.value,
       termDisplayMode,
       showZeroRows,
-      extraTerms: [...segTermState.extras]
+      extraTerms: segTermState.extras.map(t => cloneTermSpec(t, 'exact')).filter(Boolean)
     };
     segmentsPendingChanges = false;
     updateSegmentsRefreshButton();
