@@ -516,7 +516,12 @@
           <option value="2">bigram</option>
           <option value="3">trigram</option>
         </select>
-        <span style="font-weight: 600;">hits by</span>
+        <select id="termDisplayMode" style="font-size: 1rem;">
+          <option value="counts" selected>hits</option>
+          <option value="both">hits + %</option>
+          <option value="pct">%</option>
+        </select>
+        <span style="font-weight: 600;">by</span>
         <select id="gran" style="font-size: 1rem;">
           <option value="genre">Genre</option>
           <option value="play">Play</option>
@@ -548,13 +553,6 @@
         <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
         <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching line text</label>
         <label><input type="checkbox" id="showZeroRows"> Show zero-hit rows</label>
-        <label>Term columns:
-          <select id="termDisplayMode" style="padding: 0.35rem 0.5rem; font-size: 0.95rem;">
-            <option value="both" selected>hits and % (default)</option>
-            <option value="counts">hits only</option>
-            <option value="pct">% only</option>
-          </select>
-        </label>
         <button id="downloadSegmentsCsv" class="download-btn" type="button">Download CSV</button>
         <div class="color-scale-options">
           <label>Palette:
@@ -788,7 +786,7 @@
   const addTermBtn = document.getElementById('addTermBtn');
   const termsList = document.getElementById('termsList');
   let extraTerms = [];
-  let termDisplayMode = 'both';
+  let termDisplayMode = 'counts';
   let showZeroRows = false;
 
   // Shared table UI helpers are provided by docs/js/table-ui.js
@@ -1007,7 +1005,7 @@
     ngramMode: '',
     gran: '',
     matchMode: '',
-    termDisplayMode: 'both',
+    termDisplayMode: 'counts',
     showZeroRows: false,
     extraTerms: []
   };
@@ -2665,7 +2663,7 @@
   }
   if (termDisplayModeSel) {
     termDisplayModeSel.addEventListener('change', (e) => {
-      termDisplayMode = e.target.value || 'both';
+      termDisplayMode = e.target.value || 'counts';
       checkSegmentsPendingChanges();
       doSearch();
     });
