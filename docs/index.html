@@ -770,6 +770,7 @@
 <script src="js/filter-popover.js"></script>
 <script src="js/color-scale.js"></script>
 <script src="js/play-detail.js"></script>
+<script src="js/ngrams-segment-selector.js"></script>
 <script src="js/lines-tab.js"></script>
 <script>
 (async function() {
@@ -797,6 +798,7 @@
   const getSortClickSuppressedUntil = window.getSortClickSuppressedUntil;
   const showFilterPopover = window.showFilterPopover;
   const closeFilterPopover = window.closeFilterPopover;
+  const createNgramsSegmentSelectorController = window.createNgramsSegmentSelectorController;
   const createLinesTabController = window.createLinesTabController;
 
   // Color scale/highlight helpers are provided by docs/js/color-scale.js
@@ -874,6 +876,7 @@
   // Sort state defaults (declare before deep-link logic uses them)
   let sortKey = null, sortDir = 'desc';
   let linesTabController = null;
+  let ngramsSegmentSelector = null;
   let segmentsColumnOrder = [];
   let ngramsColumnOrder = [];
   let segmentsColumnDefs = [];
@@ -1100,216 +1103,39 @@
   let ngramsSelectedSegments = new Set();
   
   // Removed play checkbox filter (use column regex filters instead)
-  
-  // Build all available segments list
-  let allAvailableSegments = [];
-  
-  function buildAvailableSegments() {
-    allAvailableSegments = [];
-    
-    // Add plays
-    plays.forEach(p => {
-      allAvailableSegments.push({
-        type: 'play',
-        id: p.play_id,
-        label: p.title,
-        meta: `${p.genre || 'Unknown'}, ${p.first_performance_year || 'Unknown year'}`,
-        searchText: `${p.title} ${p.genre || ''} play`.toLowerCase()
-      });
-    });
-    
-    // Add genres
-    const genres = [...new Set(plays.map(p => p.genre).filter(Boolean))];
-    genres.forEach(g => {
-      allAvailableSegments.push({
-        type: 'genre',
-        id: g,
-        label: g,
-        meta: `Genre`,
-        searchText: `${g} genre`.toLowerCase()
-      });
-    });
-    
-    // Add acts
-    const acts = new Map();
-    chunks.forEach(chunk => {
-      const key = `${chunk.play_id}:${chunk.act}`;
-      if (!acts.has(key)) {
-        const play = playsById.get(chunk.play_id);
-        acts.set(key, {
-          type: 'act',
-          id: key,
-          label: `${play.title} - Act ${chunk.act}`,
-          meta: `Act`,
-          searchText: `${play.title} act ${chunk.act}`.toLowerCase()
-        });
-      }
-    });
-    allAvailableSegments.push(...acts.values());
-    
-    // Add scenes
-    chunks.forEach(chunk => {
-      const play = playsById.get(chunk.play_id);
-      allAvailableSegments.push({
-        type: 'scene',
-        id: chunk.scene_id,
-        label: `${play.title} - Act ${chunk.act}, Scene ${chunk.scene}`,
-        meta: `${chunk.total_words || 0} words`,
-        searchText: `${play.title} act ${chunk.act} scene ${chunk.scene}`.toLowerCase()
-      });
-    });
-    
-    // Add all characters (sorted by word count)
-    const sortedChars = [...characters].sort((a, b) => (b.total_words_spoken || 0) - (a.total_words_spoken || 0));
-    sortedChars.forEach(c => {
-      allAvailableSegments.push({
-        type: 'character',
-        id: c.character_id,
-        label: `${c.name} (${c.play_title})`,
-        meta: `${c.total_words_spoken || 0} words`,
-        searchText: `${c.name} ${c.play_title} character`.toLowerCase()
-      });
+  if (typeof createNgramsSegmentSelectorController === 'function') {
+    ngramsSegmentSelector = createNgramsSegmentSelectorController({
+      selectedSegments: ngramsSelectedSegments,
+      getPlays: () => plays,
+      getChunks: () => chunks,
+      getCharacters: () => characters,
+      getPlaysById: () => playsById,
+      onSelectionChange: () => { checkNgramsPendingChanges(); }
     });
   }
-  
+
+  function buildAvailableSegments() {
+    if (!ngramsSegmentSelector) return;
+    ngramsSegmentSelector.buildAvailableSegments();
+  }
+
+  function renderAvailableSegments() {
+    if (!ngramsSegmentSelector) return;
+    ngramsSegmentSelector.renderAvailableSegments();
+  }
+
+  function renderSelectedSegments() {
+    if (!ngramsSegmentSelector) return;
+    ngramsSegmentSelector.renderSelectedSegments();
+  }
+
+  function initSegmentSelectors() {
+    if (!ngramsSegmentSelector) return;
+    ngramsSegmentSelector.init();
+  }
+
   buildAvailableSegments();
   renderExtraTerms();
-  
-  // Render available segments based on search
-  function renderAvailableSegments() {
-    const searchInput = document.getElementById('segmentSearchInput');
-    const typeFilter = document.getElementById('segmentTypeFilter');
-    const container = document.getElementById('availableSegmentsList');
-    
-    const searchTerm = searchInput.value.toLowerCase().trim();
-    const typeValue = typeFilter.value;
-    
-    // Filter segments
-    let filtered = allAvailableSegments.filter(seg => {
-      // Type filter
-      if (typeValue !== 'all' && seg.type !== typeValue) return false;
-      
-      // Search filter
-      if (searchTerm && !seg.searchText.includes(searchTerm)) return false;
-      
-      // Don't show already selected segments
-      const isSelected = Array.from(ngramsSelectedSegments).some(selected => 
-        selected.type === seg.type && String(selected.id) === String(seg.id)
-      );
-      if (isSelected) return false;
-      
-      return true;
-    });
-    
-    // Limit to 100 results for performance
-    if (filtered.length > 100) {
-      filtered = filtered.slice(0, 100);
-    }
-    
-    if (filtered.length === 0) {
-      container.innerHTML = '<p class="muted" style="text-align: center; padding: 2rem;">No segments found</p>';
-      return;
-    }
-    
-    container.innerHTML = '';
-    filtered.forEach(seg => {
-      const div = document.createElement('div');
-      div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--border);';
-      
-      const typeLabel = seg.type.charAt(0).toUpperCase() + seg.type.slice(1);
-      div.innerHTML = `
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-weight: 500;">${seg.label}</div>
-          <div class="muted" style="font-size: 0.85rem;">${seg.meta}</div>
-        </div>
-        <button class="add-segment-btn" data-type="${seg.type}" data-id="${seg.id}" data-label="${seg.label}" style="padding: 0.25rem 0.6rem; font-size: 0.85rem; white-space: nowrap;">Add</button>
-      `;
-      container.appendChild(div);
-    });
-    
-    // Add click handlers
-    container.querySelectorAll('.add-segment-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const segType = btn.dataset.type;
-        let segId = btn.dataset.id;
-        
-        // Parse numeric IDs for appropriate types
-        if (segType === 'play' || segType === 'character' || segType === 'scene') {
-          segId = parseInt(segId);
-        }
-        
-        ngramsSelectedSegments.add({
-          type: segType,
-          id: segId,
-          label: btn.dataset.label
-        });
-        
-        renderAvailableSegments();
-        renderSelectedSegments();
-        checkNgramsPendingChanges();
-      });
-    });
-  }
-  
-  // Render selected segments
-  function renderSelectedSegments() {
-    const container = document.getElementById('selectedSegmentsList');
-    const countSpan = document.getElementById('selectedSegmentsCount');
-    
-    countSpan.textContent = ngramsSelectedSegments.size;
-    
-    if (ngramsSelectedSegments.size === 0) {
-      container.innerHTML = '<p class="muted" style="text-align: center; padding: 2rem;">No segments selected</p>';
-      return;
-    }
-    
-    container.innerHTML = '';
-    const sortedSegments = Array.from(ngramsSelectedSegments).sort((a, b) => a.label.localeCompare(b.label));
-    
-    sortedSegments.forEach(seg => {
-      const div = document.createElement('div');
-      div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 0.4rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--border);';
-      
-      const typeLabel = seg.type.charAt(0).toUpperCase() + seg.type.slice(1);
-      div.innerHTML = `
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-weight: 500;">${seg.label}</div>
-          <div class="muted" style="font-size: 0.85rem;">${typeLabel}</div>
-        </div>
-        <button class="remove-segment-btn" style="padding: 0.25rem 0.6rem; font-size: 0.85rem; background: #dc3545; border-color: #dc3545;">Remove</button>
-      `;
-      container.appendChild(div);
-      
-      // Add remove handler
-      div.querySelector('.remove-segment-btn').addEventListener('click', () => {
-        ngramsSelectedSegments.delete(seg);
-        renderAvailableSegments();
-        renderSelectedSegments();
-        checkNgramsPendingChanges();
-      });
-    });
-  }
-  
-  // Initialize segment selectors
-  function initSegmentSelectors() {
-    const searchInput = document.getElementById('segmentSearchInput');
-    const typeFilter = document.getElementById('segmentTypeFilter');
-    const clearAllBtn = document.getElementById('clearAllSegments');
-    
-    searchInput.addEventListener('input', renderAvailableSegments);
-    typeFilter.addEventListener('change', renderAvailableSegments);
-    
-    clearAllBtn.addEventListener('click', () => {
-      ngramsSelectedSegments.clear();
-      renderAvailableSegments();
-      renderSelectedSegments();
-      checkNgramsPendingChanges();
-    });
-    
-    // Initial render
-    renderSelectedSegments();
-  }
-  
   initSegmentSelectors();
 
   // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
@@ -2930,6 +2756,15 @@
     renderSelectedSegments();
     buildNgramsComparison();
   }
+
+  // Local testing override: force a tab open without affecting normal defaults/deep links
+  (function applyShowTabOverride() {
+    const sp = new URLSearchParams(location.search);
+    const forcedTab = (sp.get('showtab') || '').trim();
+    if (!forcedTab) return;
+    const btn = document.querySelector(`.tab-btn[data-tab="${forcedTab}"]`);
+    if (btn) btn.click();
+  })();
   
   // Color Scale Module — loaded from js/color-scale.js
   // Initialize with dependencies
