@@ -1488,7 +1488,7 @@
     function buildTermColumns(includeCounts = true, includePct = true) {
       const cols = [];
       activeTerms.forEach((term, idx) => {
-        if (includeCounts) cols.push({ key: `${termKeys[idx]}_count`, label: `"${term}" hits`, type: 'number', defaultDir: 'desc' });
+        if (includeCounts) cols.push({ key: `${termKeys[idx]}_count`, label: `"${term}"`, type: 'number', defaultDir: 'desc' });
         if (includePct) cols.push({ key: `${termKeys[idx]}_pct`, label: `"${term}" %`, type: 'number', defaultDir: 'desc' });
       });
       return cols;
