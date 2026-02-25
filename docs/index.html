@@ -766,6 +766,7 @@
   </div>
 
 <script src="js/utils.js"></script>
+<script src="js/table-ui.js"></script>
 <script src="js/color-scale.js"></script>
 <script src="js/play-detail.js"></script>
 <script>
@@ -786,6 +787,12 @@
   let extraTerms = [];
   let termDisplayMode = 'both';
   let showZeroRows = false;
+
+  // Shared table UI helpers are provided by docs/js/table-ui.js
+  const applyColumnOrder = window.applyColumnOrder;
+  const moveKeyBeforeTarget = window.moveKeyBeforeTarget;
+  const wireHeaderDrag = window.wireHeaderDrag;
+  const getSortClickSuppressedUntil = window.getSortClickSuppressedUntil;
 
   // Color scale/highlight helpers are provided by docs/js/color-scale.js
   const colorScaleState = window.colorScaleState;
@@ -866,76 +873,6 @@
   let ngramsColumnOrder = [];
   let segmentsColumnDefs = [];
   let ngramsColumnDefs = [];
-  let sortClickSuppressedUntil = 0;
-  let activeHeaderDrag = null;
-  const DRAG_THRESHOLD_PX = 6;
-
-  function applyColumnOrder(cols, order) {
-    if (!Array.isArray(cols) || cols.length === 0) return [];
-    if (!Array.isArray(order) || order.length === 0) return cols.slice();
-    const byKey = new Map(cols.map(c => [c.key, c]));
-    const ordered = [];
-    for (const key of order) {
-      if (!byKey.has(key)) continue;
-      ordered.push(byKey.get(key));
-      byKey.delete(key);
-    }
-    for (const c of cols) if (byKey.has(c.key)) ordered.push(c);
-    return ordered;
-  }
-
-  function moveKeyBeforeTarget(order, sourceKey, targetKey) {
-    const out = Array.isArray(order) ? order.slice() : [];
-    const from = out.indexOf(sourceKey);
-    const to = out.indexOf(targetKey);
-    if (from < 0 || to < 0 || from === to) return out;
-    const [moved] = out.splice(from, 1);
-    const insertAt = from < to ? to - 1 : to;
-    out.splice(insertAt, 0, moved);
-    return out;
-  }
-
-  function clearDragOverClasses(selector) {
-    document.querySelectorAll(selector).forEach(el => el.classList.remove('drag-over'));
-  }
-
-  function wireHeaderDrag(th, opts) {
-    const { tableType, selector, onDropReorder } = opts;
-
-    th.draggable = true;
-    th.style.cursor = 'grab';
-    th.addEventListener('dragstart', (e) => {
-      activeHeaderDrag = { tableType, key: th.dataset.key };
-      sortClickSuppressedUntil = Date.now() + 400;
-      th.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', th.dataset.key);
-    });
-    th.addEventListener('dragover', (e) => {
-      if (!activeHeaderDrag || activeHeaderDrag.tableType !== tableType) return;
-      if (activeHeaderDrag.key === th.dataset.key) return;
-      e.preventDefault();
-      th.classList.add('drag-over');
-      e.dataTransfer.dropEffect = 'move';
-    });
-    th.addEventListener('dragleave', () => th.classList.remove('drag-over'));
-    th.addEventListener('drop', (e) => {
-      if (!activeHeaderDrag || activeHeaderDrag.tableType !== tableType) return;
-      e.preventDefault();
-      clearDragOverClasses(selector);
-      const sourceKey = activeHeaderDrag.key;
-      const targetKey = th.dataset.key;
-      if (sourceKey && targetKey && sourceKey !== targetKey) {
-        sortClickSuppressedUntil = Date.now() + 250;
-        onDropReorder(sourceKey, targetKey);
-      }
-    });
-    th.addEventListener('dragend', () => {
-      clearDragOverClasses(selector);
-      th.classList.remove('dragging');
-      activeHeaderDrag = null;
-    });
-  }
   // Column filters maps (declare early for deep-link)
   // Scope segments filters by current granularity (play/genre/act/scene/line/character)
   const segmentsFiltersByGran = new Map(); // gran -> Map(columnKey -> filter)
@@ -1566,7 +1503,7 @@
       th.dataset.type = c.type || 'text';
       th.title = 'Click to sort';
       th.addEventListener('click', () => {
-        if (Date.now() < sortClickSuppressedUntil) return;
+        if (Date.now() < getSortClickSuppressedUntil()) return;
         if (sortKey === c.key) sortDir = (sortDir === 'asc' ? 'desc' : 'asc');
         else { sortKey = c.key; sortDir = c.defaultDir || 'desc'; }
         segmentsAllRows = sortRows(segmentsAllRows);
@@ -1633,6 +1570,19 @@
       return sortDir === 'asc' ? (av - bv) : (bv - av);
     });
     return rows;
+  }
+
+  function ensureSegmentsSortForColumns(cols, defaultKey, defaultDir = 'desc') {
+    const keys = new Set((cols || []).map(c => c && c.key).filter(Boolean));
+    if (sortKey && keys.has(sortKey)) {
+      if (sortDir !== 'asc' && sortDir !== 'desc') sortDir = defaultDir;
+      return;
+    }
+    const fallbackKey = (defaultKey && keys.has(defaultKey))
+      ? defaultKey
+      : (((cols || []).find(c => c && c.key) || {}).key || null);
+    sortKey = fallbackKey;
+    sortDir = defaultDir;
   }
 
   function denomFor(n, levelKey, meta){
@@ -1863,7 +1813,7 @@
       baseCols.push(...termCols);
       baseCols.push({ key: 'line', label: 'Line', type: 'text' });
       setHeaders(baseCols);
-      if (termCols.length) { sortKey = termCols[0].key; sortDir = 'desc'; }
+      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
       return finalizeRows(true, false);
     }
 
@@ -1891,7 +1841,7 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      if (termCols.length) { sortKey = termCols[0].key; sortDir = 'desc'; }
+      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -1928,7 +1878,7 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      if (termCols.length) { sortKey = termCols[0].key; sortDir = 'desc'; }
+      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -1962,7 +1912,7 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      if (termCols.length) { sortKey = termCols[0].key; sortDir = 'desc'; }
+      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -1992,7 +1942,7 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      if (termCols.length) { sortKey = termCols[0].key; sortDir = 'desc'; }
+      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -2021,7 +1971,7 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      if (termCols.length) { sortKey = termCols[0].key; sortDir = 'desc'; }
+      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
       return finalizeRows(includeCounts, includePct);
     }
   }
@@ -2796,7 +2746,7 @@
       th.style.cursor = 'pointer';
       th.title = 'Click to sort';
       th.addEventListener('click', () => {
-        if (Date.now() < sortClickSuppressedUntil) return;
+        if (Date.now() < getSortClickSuppressedUntil()) return;
         const key = th.dataset.key;
         if (ngramsSortKey === key) {
           ngramsSortDir = (ngramsSortDir === 'asc' ? 'desc' : 'asc');

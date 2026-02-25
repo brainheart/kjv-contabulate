@@ -156,11 +156,11 @@ test.describe('Deep Links', () => {
     // First play should be alphabetically first
     const firstCell = page.locator('#results tbody tr:first-child td:first-child');
     const text = await firstCell.textContent();
-    // Play view first column is "Play" (title) — sorted ascending, first should start with A or T
-    // Just verify we got a non-empty result and sort indicator is present
-    expect(text.length).toBeGreaterThan(0);
-    const sorted = page.locator('#results thead th.sorted-asc, #results thead th.sorted-desc');
-    await expect(sorted).toHaveCount(1);
+    expect((text || '').trim().length).toBeGreaterThan(0);
+    expect((text || '').trim().startsWith('A')).toBeTruthy();
+    const sortedAsc = page.locator('#results thead th.sorted-asc');
+    await expect(sortedAsc).toHaveCount(1);
+    await expect(sortedAsc.first()).toContainText('Play');
   });
 
   test('permalink updates on search', async ({ page }) => {
