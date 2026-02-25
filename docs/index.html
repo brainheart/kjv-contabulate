@@ -510,7 +510,8 @@
   <div class="tab-content" id="segmentsTab">
     <div class="controls">
       <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
-        <span style="font-weight: 600;">Show</span>
+        <button id="addColumnBtn" type="button" style="padding: 0.45rem 0.8rem; font-size: 0.95rem;">Add Column</button>
+        <span style="font-weight: 600;">for</span>
         <select id="ngramMode" style="font-size: 1rem;">
           <option value="1" selected>single word</option>
           <option value="2">bigram</option>
@@ -537,13 +538,8 @@
         </select>
         <input id="q" type="text" placeholder="" value="love" style="flex: 1; min-width: 20rem; font-size: 1rem;">
       </div>
-      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.98rem; margin-top: 0.5rem;">
-        <span style="font-weight: 600;">Compare with</span>
-        <input id="additionalTermInput" type="text" placeholder="Add another term (e.g., hate)" style="flex: 1; min-width: 14rem; font-size: 0.95rem; padding: 0.45rem 0.6rem;">
-        <button id="addTermBtn" type="button" style="padding: 0.45rem 0.8rem;">Add term</button>
-      </div>
       <div id="termsList" class="term-chips muted" style="margin-top: 0.35rem; font-size: 0.95rem;">
-        No extra terms yet. Add some to see side-by-side columns.
+        No columns yet. Add a term above to start comparing.
       </div>
     </div>
 
@@ -782,8 +778,7 @@
   const ngramTableContainer = document.getElementById('ngramTableContainer');
   const termDisplayModeSel = document.getElementById('termDisplayMode');
   const showZeroRowsToggle = document.getElementById('showZeroRows');
-  const addTermInput = document.getElementById('additionalTermInput');
-  const addTermBtn = document.getElementById('addTermBtn');
+  const addColumnBtn = document.getElementById('addColumnBtn');
   const termsList = document.getElementById('termsList');
   let extraTerms = [];
   let termDisplayMode = 'counts';
@@ -810,32 +805,51 @@
   const applyColorScalesForVisibleTables = window.applyColorScalesForVisibleTables;
   const renderAllLegends = window.renderAllLegends;
   function pruneExtraTermsAgainstPrimary() {
-    const primaryNorm = normalizeTerm(q.value || '');
-    const filtered = extraTerms.filter(t => normalizeTerm(t) !== primaryNorm);
+    // Legacy function name retained: chips are now the canonical term list.
+    const seen = new Set();
+    const filtered = [];
+    extraTerms.forEach((t) => {
+      const norm = normalizeTerm(t || '');
+      if (!norm || seen.has(norm)) return;
+      seen.add(norm);
+      filtered.push(t.trim());
+    });
     if (filtered.length !== extraTerms.length) {
       extraTerms = filtered;
       renderExtraTerms();
     }
   }
   function getActiveTerms() {
+    return extraTerms.map(t => t && t.trim()).filter(Boolean);
+  }
+  function getActiveTermsStateParts() {
+    const terms = getActiveTerms();
+    return {
+      primary: terms[0] || '',
+      extras: terms.slice(1)
+    };
+  }
+  function setActiveTermsFromRestoredState(primaryTerm, extraTermList, preserveInputValue = true) {
     const seen = new Set();
-    const out = [];
+    const merged = [];
     const add = (term) => {
-      const norm = normalizeTerm(term);
+      const norm = normalizeTerm(term || '');
       if (!norm || seen.has(norm)) return;
       seen.add(norm);
-      out.push(term.trim());
+      merged.push(String(term).trim());
     };
-    add(q.value || '');
-    extraTerms.forEach(add);
-    return out;
+    add(primaryTerm || '');
+    (extraTermList || []).forEach(add);
+    extraTerms = merged;
+    renderExtraTerms();
+    if (!preserveInputValue) q.value = '';
   }
   function renderExtraTerms() {
     if (!termsList) return;
     const terms = extraTerms.filter(t => t && t.trim());
     if (terms.length === 0) {
       termsList.classList.add('muted');
-      termsList.textContent = 'No extra terms yet. Add some to see side-by-side columns.';
+      termsList.textContent = 'No columns yet. Add a term above to start comparing.';
       return;
     }
     termsList.classList.remove('muted');
@@ -860,16 +874,15 @@
   }
   function addExtraTerm(term) {
     const val = (term ?? '').trim();
-    if (!val) return;
+    if (!val) return false;
     const normVal = normalizeTerm(val);
-    const primaryNorm = normalizeTerm(q.value || '');
-    if (normVal === primaryNorm) return;
     const existing = extraTerms.map(normalizeTerm);
-    if (existing.includes(normVal)) return;
+    if (existing.includes(normVal)) return false;
     extraTerms.push(val);
     renderExtraTerms();
     checkSegmentsPendingChanges();
     doSearch();
+    return true;
   }
   // Sort state defaults (declare before deep-link logic uses them)
   let sortKey = null, sortDir = 'desc';
@@ -903,11 +916,12 @@
     // palette and steps omitted for cleaner URLs
     p.set('hl', colorScaleState.highlightEnabled ? '1' : '0');
     // Segments
-    p.set('q', q.value.trim());
+    const segTermState = getActiveTermsStateParts();
+    p.set('q', segTermState.primary || '');
     p.set('nm', ngramMode.value);
     p.set('gran', gran.value);
     p.set('mm', matchMode.value);
-    const extras = extraTerms.map(t => t.trim()).filter(Boolean);
+    const extras = segTermState.extras.map(t => t.trim()).filter(Boolean);
     if (extras.length) {
       try {
         p.set('qt', encodeURIComponent(JSON.stringify(extras)));
@@ -1173,9 +1187,8 @@
         }
         if (sp.has('qt')) {
           extraTerms = decodeExtrasParam(sp.get('qt'));
-          pruneExtraTermsAgainstPrimary();
-          renderExtraTerms();
         }
+        setActiveTermsFromRestoredState(sp.has('q') ? q.value : '', extraTerms, true);
         if (sp.has('sk')) sortKey = sp.get('sk');
         if (sp.has('sd')) sortDir = sp.get('sd');
         if (sp.has('co')) {
@@ -1195,7 +1208,7 @@
         }
       } catch(e) { /* continue to finally */ }
       // Trigger render for segments regardless
-      const qv = q.value.trim(); if (qv) doSearch();
+      const terms = getActiveTerms(); if (terms.length) doSearch();
       applyColorScalesForVisibleTables();
       updateDeepLink();
       return;
@@ -1235,9 +1248,8 @@
       }
       if (Array.isArray(st.segments.extraTerms)) {
         extraTerms = st.segments.extraTerms.filter(Boolean);
-        pruneExtraTermsAgainstPrimary();
-        renderExtraTerms();
       }
+        setActiveTermsFromRestoredState(st.segments.q != null ? q.value : '', extraTerms, true);
         if (st.segments.sortKey) sortKey = st.segments.sortKey;
         if (st.segments.sortDir) sortDir = st.segments.sortDir;
         // Clear and set filters only for current granularity
@@ -1265,7 +1277,7 @@
         }
       }
       // Trigger renders
-      const qv = q.value.trim(); if (qv) doSearch();
+      const terms = getActiveTerms(); if (terms.length) doSearch();
       const lqv = document.getElementById('linesQuery').value.trim(); if (lqv) doLinesSearch();
       applyColorScalesForVisibleTables();
       appliedDeepLinkState = true;
@@ -1437,7 +1449,7 @@
     const ngramModeVal = ngramMode.value;
     const n = parseInt(ngramModeVal, 10);
     const activeTerms = (terms || []).map(t => t.trim()).filter(Boolean);
-    if (activeTerms.length === 0) return null;
+    const hasTerms = activeTerms.length > 0;
 
     const termKeys = activeTerms.map((_, i) => `t${i}`);
     const includeCounts = termDisplayMode !== 'pct';
@@ -1455,7 +1467,7 @@
       : (n === 1 ? tokens : n === 2 ? tokens2 : tokens3);
 
     const compiledRegexes = [];
-    if (isRegex) {
+    if (isRegex && hasTerms) {
       for (const term of activeTerms) {
         try { compiledRegexes.push(new RegExp(term.trim(), 'i')); }
         catch (e) {
@@ -1511,7 +1523,7 @@
         genreTotals.set(g, (genreTotals.get(g) || 0) + (play.total_words || 0));
       });
     }
-    if (showZeroRows && granVal !== 'line') {
+    if ((showZeroRows || !hasTerms) && granVal !== 'line') {
       if (granVal === 'scene') {
         chunks.forEach(m => {
           ensureRow(m.scene_id, () => {
@@ -2091,15 +2103,16 @@
 
   // Check if segments settings have changed
   function checkSegmentsPendingChanges() {
+    const segTermState = getActiveTermsStateParts();
     const currentState = {
-      query: q.value.trim(),
+      query: segTermState.primary,
       ngramMode: ngramMode.value,
       gran: gran.value,
       matchMode: matchMode.value,
       termDisplayMode,
       showZeroRows
     };
-    const currentExtras = extraTerms.map(normalizeTerm).filter(Boolean).sort();
+    const currentExtras = segTermState.extras.map(normalizeTerm).filter(Boolean).sort();
     const lastExtras = (lastSegmentsState.extraTerms || []).map(normalizeTerm).filter(Boolean).sort();
     
     const hasChanges = 
@@ -2129,14 +2142,15 @@
   updateDeepLink();
   
   function saveSegmentsState() {
+    const segTermState = getActiveTermsStateParts();
     lastSegmentsState = {
-      query: q.value.trim(),
+      query: segTermState.primary,
       ngramMode: ngramMode.value,
       gran: gran.value,
       matchMode: matchMode.value,
       termDisplayMode,
       showZeroRows,
-      extraTerms: [...extraTerms]
+      extraTerms: [...segTermState.extras]
     };
     segmentsPendingChanges = false;
     updateSegmentsRefreshButton();
@@ -2198,16 +2212,22 @@
   function doSearch(){
     pruneExtraTermsAgainstPrimary();
     const terms = getActiveTerms();
-    if (terms.length === 0){ tbody.innerHTML = ''; ngramTableContainer.innerHTML=''; return; }
     const rows = buildRowsForTerms(terms);
-    if (rows) {
+    if (rows !== null) {
       renderRows(rows);
       saveSegmentsState();
     }
+    ngramTableContainer.innerHTML='';
   }
 
   if (go) go.addEventListener('click', doSearch);
-  q.addEventListener('keydown', e => { if (e.key==='Enter') doSearch(); });
+  q.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const added = addExtraTerm(q.value);
+      if (added) q.value = '';
+    }
+  });
   // per-column filters are handled via header filter icons; removed global min filters
 
   // Removed play selection buttons (use column filters)
@@ -2626,23 +2646,13 @@
     if (hasRegexChars && matchMode.value === 'exact') {
       matchMode.value = 'regex';
     }
-    pruneExtraTermsAgainstPrimary();
-    renderExtraTerms();
-    checkSegmentsPendingChanges();
-    debouncedDoSearch();
   });
-  if (addTermBtn) {
-    addTermBtn.addEventListener('click', () => {
-      addExtraTerm(addTermInput.value);
-      addTermInput.value = '';
-    });
-  }
-  if (addTermInput) {
-    addTermInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addExtraTerm(addTermInput.value);
-        addTermInput.value = '';
+  if (addColumnBtn) {
+    addColumnBtn.addEventListener('click', () => {
+      const added = addExtraTerm(q.value);
+      if (added) {
+        q.value = '';
+        q.focus();
       }
     });
   }
