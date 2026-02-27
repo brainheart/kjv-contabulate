@@ -535,10 +535,10 @@
           <option value="exact">exact term</option>
           <option value="regex">regex pattern</option>
         </select>
-        <input id="q" type="text" placeholder="" value="love" style="flex: 1; min-width: 20rem; font-size: 1rem;">
+        <input id="q" type="text" placeholder="Type a search term here, then hit &quot;Add Column&quot;" style="flex: 1; min-width: 20rem; font-size: 1rem;">
       </div>
       <div id="termsList" class="term-chips muted" style="margin-top: 0.35rem; font-size: 0.95rem;">
-        No columns yet. Add a term above to start comparing.
+        No search term columns yet.
       </div>
     </div>
 
@@ -693,9 +693,70 @@
   const showZeroRowsToggle = document.getElementById('showZeroRows');
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termsList = document.getElementById('termsList');
+  const qPlaceholderText = 'Type a search term here, then hit "Add Column"';
+  let qPlaceholderTimer = null;
+  let qPlaceholderIndex = 0;
+  let qPlaceholderDidAnimate = false;
   let extraTerms = [];
   let termDisplayMode = 'counts';
   let showZeroRows = false;
+
+  function stopQPlaceholderAnimation(clearNow = false) {
+    if (qPlaceholderTimer) {
+      clearTimeout(qPlaceholderTimer);
+      qPlaceholderTimer = null;
+    }
+    if (clearNow && q) q.placeholder = '';
+  }
+  function tickQPlaceholderAnimation() {
+    if (!q) return;
+    if (qPlaceholderDidAnimate) {
+      qPlaceholderTimer = null;
+      return;
+    }
+    if (document.activeElement === q || q.value.trim()) {
+      stopQPlaceholderAnimation(true);
+      return;
+    }
+    if (qPlaceholderIndex < qPlaceholderText.length) {
+      qPlaceholderIndex++;
+      q.placeholder = qPlaceholderText.slice(0, qPlaceholderIndex);
+      qPlaceholderTimer = setTimeout(tickQPlaceholderAnimation, 55);
+      return;
+    }
+    q.placeholder = qPlaceholderText;
+    qPlaceholderDidAnimate = true;
+    qPlaceholderTimer = null;
+  }
+  function startQPlaceholderAnimation(reset = false) {
+    if (!q || document.activeElement === q || q.value.trim()) return;
+    stopQPlaceholderAnimation(false);
+    if (qPlaceholderDidAnimate) {
+      q.placeholder = qPlaceholderText;
+      return;
+    }
+    if (reset) {
+      qPlaceholderIndex = 0;
+      q.placeholder = '';
+    }
+    tickQPlaceholderAnimation();
+  }
+  if (q) {
+    startQPlaceholderAnimation(true);
+    q.addEventListener('focus', () => {
+      stopQPlaceholderAnimation(true);
+    });
+    q.addEventListener('blur', () => {
+      if (!q.value.trim()) startQPlaceholderAnimation(false);
+    });
+    q.addEventListener('input', () => {
+      if (q.value.trim()) {
+        stopQPlaceholderAnimation(true);
+      } else if (document.activeElement !== q) {
+        startQPlaceholderAnimation(false);
+      }
+    });
+  }
 
   // Shared table UI helpers are provided by docs/js/table-ui.js
   const applyColumnOrder = window.applyColumnOrder;
@@ -802,7 +863,7 @@
     const terms = extraTerms.map(t => cloneTermSpec(t, matchMode.value)).filter(Boolean);
     if (terms.length === 0) {
       termsList.classList.add('muted');
-      termsList.textContent = 'No columns yet. Add a term above to start comparing.';
+      termsList.textContent = 'No search term columns yet.';
       return;
     }
     termsList.classList.remove('muted');
@@ -1991,7 +2052,6 @@
   // initial state for contexts tab (only if no deep link state applied)
   if (!appliedDeepLinkState) {
     gran.value = 'play';
-    q.value = 'love';
     doSearch();
   }
 
