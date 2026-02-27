@@ -600,89 +600,6 @@
     </div>
   </div>
 
-  <div class="tab-content" id="ngramsTab" style="display: none;">
-    <div class="controls">
-      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
-        <span style="font-weight: 600;">Show</span>
-        <select id="ngramsDisplayMode" style="font-size: 1rem;">
-          <option value="hits">hits</option>
-          <option value="pct">hit %</option>
-          <option value="both" selected>hits and hit %</option>
-        </select>
-        <span style="font-weight: 600;">for</span>
-        <select id="ngramsNgramMode" style="font-size: 1rem;">
-          <option value="1" selected>single words</option>
-          <option value="2">bigrams</option>
-          <option value="3">trigrams</option>
-        </select>
-        <span style="font-weight: 600;">matching the</span>
-        <select id="ngramsMatchMode" style="font-size: 1rem;">
-          <option value="exact">exact term</option>
-          <option value="regex">regex pattern</option>
-        </select>
-        <input type="text" id="ngramsQuery" placeholder="(optional: leave blank to show all)" style="flex: 1; min-width: 200px; font-size: 1rem; padding: 0.5rem;">
-      </div>
-    </div>
-
-    <details>
-      <summary class="sr"><strong>Select Contexts to Compare</strong></summary>
-      <div style="margin-bottom: 0.75rem;">
-        <p class="muted" style="margin: 0.5rem 0;">Search for and select plays, acts, scenes, genres, or characters to compare their n-gram frequencies.</p>
-        <div style="display: flex; gap: 1rem; margin-top: 0.75rem;">
-          <!-- Left column: Search and add contexts -->
-          <div style="flex: 1; min-width: 300px;">
-            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-              <input type="text" id="segmentSearchInput" placeholder="Search segments..." style="flex: 1; padding: 0.5rem;">
-              <select id="segmentTypeFilter" style="padding: 0.5rem;">
-                <option value="all">All types</option>
-                <option value="play">Plays</option>
-                <option value="genre">Genres</option>
-                <option value="act">Acts</option>
-                <option value="scene">Scenes</option>
-                <option value="character">Characters</option>
-              </select>
-            </div>
-            <div id="availableSegmentsList" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border); padding: 0.5rem; border-radius: 4px; background: white;">
-              <p class="muted" style="text-align: center; padding: 2rem;">Type to search for segments...</p>
-            </div>
-          </div>
-          
-          <!-- Right column: Selected contexts -->
-          <div style="flex: 1; min-width: 300px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <strong>Selected Contexts (<span id="selectedSegmentsCount">0</span>)</strong>
-              <button id="clearAllSegments" style="padding: 0.3rem 0.6rem; font-size: 0.9rem;">Clear All</button>
-            </div>
-            <div id="selectedSegmentsList" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border); padding: 0.5rem; border-radius: 4px; background: white;">
-              <p class="muted" style="text-align: center; padding: 2rem;">No contexts selected</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <div id="ngramTableContainer"></div>
-    
-    <div class="pagination" id="ngramsPagination" style="display: none;">
-      <button id="ngramsFirstPage">First</button>
-      <button id="ngramsPrevPage">Prev</button>
-      <span class="page-info" id="ngramsPageInfo">Page 1 of 1</span>
-      <button id="ngramsNextPage">Next</button>
-      <button id="ngramsLastPage">Last</button>
-      <label>
-        Rows per page:
-        <select id="ngramsPageSize">
-          <option value="25">25</option>
-          <option value="50">50</option>
-          <option value="100" selected>100</option>
-          <option value="250">250</option>
-          <option value="500">500</option>
-        </select>
-      </label>
-      <span class="page-info" id="ngramsTotalInfo"></span>
-    </div>
-  </div>
-
   <div class="tab-content" id="linesTab" style="display: none;">
     <div class="controls">
       <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
@@ -763,7 +680,6 @@
 <script src="js/filter-popover.js"></script>
 <script src="js/color-scale.js"></script>
 <script src="js/play-detail.js"></script>
-<script src="js/ngrams-segment-selector.js"></script>
 <script src="js/lines-tab.js"></script>
 <script>
 (async function() {
@@ -774,7 +690,6 @@
   const ngramMode = document.getElementById('ngramMode');
   const theadRow = document.getElementById('headRow');
   const tbody = document.querySelector('#results tbody');
-  const ngramTableContainer = document.getElementById('ngramTableContainer');
   const termDisplayModeSel = document.getElementById('termDisplayMode');
   const showZeroRowsToggle = document.getElementById('showZeroRows');
   const addColumnBtn = document.getElementById('addColumnBtn');
@@ -790,7 +705,6 @@
   const getSortClickSuppressedUntil = window.getSortClickSuppressedUntil;
   const showFilterPopover = window.showFilterPopover;
   const closeFilterPopover = window.closeFilterPopover;
-  const createNgramsSegmentSelectorController = window.createNgramsSegmentSelectorController;
   const createLinesTabController = window.createLinesTabController;
 
   // Color scale/highlight helpers are provided by docs/js/color-scale.js
@@ -929,11 +843,8 @@
   // Sort state defaults (declare before deep-link logic uses them)
   let sortKey = null, sortDir = 'desc';
   let linesTabController = null;
-  let ngramsSegmentSelector = null;
   let segmentsColumnOrder = [];
-  let ngramsColumnOrder = [];
   let segmentsColumnDefs = [];
-  let ngramsColumnDefs = [];
   // Column filters maps (declare early for deep-link)
   // Scope segments filters by current granularity (play/genre/act/scene/line/character)
   const segmentsFiltersByGran = new Map(); // gran -> Map(columnKey -> filter)
@@ -1079,7 +990,6 @@
 
   // Pending changes tracking
   let segmentsPendingChanges = false;
-  let ngramsPendingChanges = false;
   
   // Last search state for segments
   let lastSegmentsState = {
@@ -1093,19 +1003,9 @@
     extraTerms: []
   };
   
-  // Last search state for ngrams
-  let lastNgramsState = {
-    query: '',
-    ngramMode: '',
-    matchMode: '',
-    displayMode: '',
-    segments: new Set()
-  };
-
   // Tab switching
   const tabBtns = document.querySelectorAll('.tab-btn');
   const segmentsTab = document.getElementById('segmentsTab');
-  const ngramsTab = document.getElementById('ngramsTab');
   const linesTab = document.getElementById('linesTab');
   
   tabBtns.forEach(btn => {
@@ -1115,13 +1015,10 @@
       btn.classList.add('active');
       
       segmentsTab.style.display = 'none';
-      ngramsTab.style.display = 'none';
       linesTab.style.display = 'none';
       
       if (targetTab === 'segments') {
         segmentsTab.style.display = 'block';
-      } else if (targetTab === 'ngrams') {
-        ngramsTab.style.display = 'block';
       } else if (targetTab === 'lines') {
         linesTab.style.display = 'block';
       }
@@ -1180,44 +1077,7 @@
 
   // Name normalization util used elsewhere
 
-  // Ngrams tab state
-  let ngramsSelectedSegments = new Set();
-  
-  // Removed play checkbox filter (use column regex filters instead)
-  if (typeof createNgramsSegmentSelectorController === 'function') {
-    ngramsSegmentSelector = createNgramsSegmentSelectorController({
-      selectedSegments: ngramsSelectedSegments,
-      getPlays: () => plays,
-      getChunks: () => chunks,
-      getCharacters: () => characters,
-      getPlaysById: () => playsById,
-      onSelectionChange: () => { checkNgramsPendingChanges(); }
-    });
-  }
-
-  function buildAvailableSegments() {
-    if (!ngramsSegmentSelector) return;
-    ngramsSegmentSelector.buildAvailableSegments();
-  }
-
-  function renderAvailableSegments() {
-    if (!ngramsSegmentSelector) return;
-    ngramsSegmentSelector.renderAvailableSegments();
-  }
-
-  function renderSelectedSegments() {
-    if (!ngramsSegmentSelector) return;
-    ngramsSegmentSelector.renderSelectedSegments();
-  }
-
-  function initSegmentSelectors() {
-    if (!ngramsSegmentSelector) return;
-    ngramsSegmentSelector.init();
-  }
-
-  buildAvailableSegments();
   renderExtraTerms();
-  initSegmentSelectors();
 
   // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
   const actTotals = new Map();
@@ -1387,17 +1247,7 @@
 
 
   // Pagination state (segments vars declared earlier to support deep-link init)
-  let ngramsCurrentPage = 1;
-  let ngramsPageSize = 100;
-  let ngramsAllRows = [];
-
-  // Pagination helper
-
-
   // actTotals and playTotals moved before applyStateFromURL (see above)
-
-  
-  let ngramsSortKey = 'totalCount', ngramsSortDir = 'desc';
   // Column filters state (moved earlier)
   
   function setHeaders(cols, preserveOrder){
@@ -2055,122 +1905,6 @@
 
   async function showLineContext() {}
 
-  function showDrillDown(rowData, firstColKey) {
-    const granVal = gran.value;
-    const ngramModeVal = ngramMode.value;
-    const n = parseInt(ngramModeVal);
-    
-    // Clear current selections and add the appropriate segment
-    ngramsSelectedSegments.clear();
-    
-    let segmentToAdd = null;
-    
-    if (granVal === 'play') {
-      const playId = rowData.play_id;
-      const play = playsById.get(playId);
-      if (play) {
-        segmentToAdd = {
-          type: 'play',
-          id: playId,
-          label: play.title
-        };
-      }
-    } else if (granVal === 'genre') {
-      const genre = rowData.genre;
-      segmentToAdd = {
-        type: 'genre',
-        id: genre,
-        label: genre
-      };
-    } else if (granVal === 'character') {
-      const charName = rowData.name;
-      const playTitle = rowData.play_title;
-      // Find character_id
-      let charId = null;
-      for (const [id, c] of charactersById) {
-        if (c.name === charName && c.play_title === playTitle) {
-          charId = id;
-          segmentToAdd = {
-            type: 'character',
-            id: charId,
-            label: `${charName} (${playTitle})`
-          };
-          break;
-        }
-      }
-    } else if (granVal === 'act') {
-      const playId = rowData.play_id;
-      const actNum = rowData.act;
-      const play = playsById.get(playId);
-      if (play) {
-        segmentToAdd = {
-          type: 'act',
-          id: `${playId}:${actNum}`,
-          label: `${play.title} - Act ${actNum}`
-        };
-      }
-    } else if (granVal === 'scene') {
-      const sceneId = rowData.scene_id;
-      const chunk = chunkById.get(sceneId);
-      if (chunk) {
-        const play = playsById.get(chunk.play_id);
-        segmentToAdd = {
-          type: 'scene',
-          id: sceneId,
-          label: `${play.title} - Act ${chunk.act}, Scene ${chunk.scene}`
-        };
-      }
-    }
-    
-    // Set the ngram mode to match the current search
-    document.getElementById('ngramsNgramMode').value = n.toString();
-    
-    // Switch to ngrams tab first
-    tabBtns.forEach(b => b.classList.remove('active'));
-    document.querySelector('[data-tab="ngrams"]').classList.add('active');
-    segmentsTab.style.display = 'none';
-    ngramsTab.style.display = 'block';
-    
-    // Add the segment and build the comparison table
-    if (segmentToAdd) {
-      ngramsSelectedSegments.add(segmentToAdd);
-      renderAvailableSegments();
-      renderSelectedSegments();
-      buildNgramsComparison();
-    }
-    
-    ngramsTab.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-  
-  function renderNgramsPage() {
-    const totalPages = getTotalPages(ngramsAllRows.length, ngramsPageSize);
-    const paginatedRows = paginateArray(ngramsAllRows, ngramsCurrentPage, ngramsPageSize);
-    
-    const tbody = document.getElementById('ngramsTableBody');
-    if (!tbody) return;
-    
-    tbody.innerHTML = '';
-    for (const [token, count] of paginatedRows) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${token}</td><td>${count}</td>`;
-      tbody.appendChild(tr);
-    }
-    
-    // Update pagination controls
-    const paginationDiv = document.getElementById('ngramsPagination');
-    paginationDiv.style.display = ngramsAllRows.length > 25 ? 'flex' : 'none';
-    
-    document.getElementById('ngramsPageInfo').textContent = `Page ${ngramsCurrentPage} of ${totalPages}`;
-    document.getElementById('ngramsTotalInfo').textContent = `(${ngramsAllRows.length} total rows)`;
-    
-    document.getElementById('ngramsFirstPage').disabled = ngramsCurrentPage === 1;
-    document.getElementById('ngramsPrevPage').disabled = ngramsCurrentPage === 1;
-    document.getElementById('ngramsNextPage').disabled = ngramsCurrentPage === totalPages;
-    document.getElementById('ngramsLastPage').disabled = ngramsCurrentPage === totalPages;
-    // Apply color scales if enabled
-    applyOrClear('#ngramsTable');
-  }
-
   // Check if segments settings have changed
   function checkSegmentsPendingChanges() {
     const segTermState = getActiveTermsStateParts();
@@ -2232,58 +1966,6 @@
     updateDeepLink();
   }
   
-  // Check if ngrams settings have changed
-  function checkNgramsPendingChanges() {
-    const currentQuery = document.getElementById('ngramsQuery').value.trim();
-    const currentNgramMode = document.getElementById('ngramsNgramMode').value;
-    const currentMatchMode = document.getElementById('ngramsMatchMode').value;
-    const currentDisplayMode = document.getElementById('ngramsDisplayMode').value;
-    
-    // Create a comparable representation of selected segments
-    const currentSegmentsStr = Array.from(ngramsSelectedSegments)
-      .map(s => `${s.type}:${s.id}`)
-      .sort()
-      .join(',');
-    const lastSegmentsStr = Array.from(lastNgramsState.segments)
-      .map(s => `${s.type}:${s.id}`)
-      .sort()
-      .join(',');
-    
-    const hasChanges = 
-      currentQuery !== lastNgramsState.query ||
-      currentNgramMode !== lastNgramsState.ngramMode ||
-      currentMatchMode !== lastNgramsState.matchMode ||
-      currentDisplayMode !== lastNgramsState.displayMode ||
-      currentSegmentsStr !== lastSegmentsStr;
-    
-    ngramsPendingChanges = hasChanges;
-    updateNgramsRefreshButton();
-  }
-  
-  function updateNgramsRefreshButton() {
-    const refreshBtn = document.getElementById('ngramsRefresh');
-    if (!refreshBtn) return;
-    if (ngramsPendingChanges) {
-      refreshBtn.classList.add('refresh-btn-pending');
-      refreshBtn.textContent = 'Refresh ⟳';
-    } else {
-      refreshBtn.classList.remove('refresh-btn-pending');
-      refreshBtn.textContent = 'Refresh';
-    }
-  }
-  
-  function saveNgramsState() {
-    lastNgramsState = {
-      query: document.getElementById('ngramsQuery').value.trim(),
-      ngramMode: document.getElementById('ngramsNgramMode').value,
-      matchMode: document.getElementById('ngramsMatchMode').value,
-      displayMode: document.getElementById('ngramsDisplayMode').value,
-      segments: new Set(Array.from(ngramsSelectedSegments).map(s => ({type: s.type, id: s.id})))
-    };
-    ngramsPendingChanges = false;
-    updateNgramsRefreshButton();
-  }
-
   function doSearch(){
     pruneExtraTermsAgainstPrimary();
     const terms = getActiveTerms();
@@ -2292,7 +1974,6 @@
       renderRows(rows);
       saveSegmentsState();
     }
-    ngramTableContainer.innerHTML='';
   }
 
   if (go) go.addEventListener('click', doSearch);
@@ -2335,386 +2016,7 @@
     renderSegmentsPage();
   });
   
-  // Ngrams pagination controls
-  document.getElementById('ngramsFirstPage').addEventListener('click', () => {
-    ngramsCurrentPage = 1;
-    if (ngramsAllRows.length > 0 && ngramsAllRows[0].hasOwnProperty('seg0_count')) {
-      renderNgramsComparisonPage();
-    } else {
-      renderNgramsPage();
-    }
-  });
-  document.getElementById('ngramsPrevPage').addEventListener('click', () => {
-    if (ngramsCurrentPage > 1) {
-      ngramsCurrentPage--;
-      if (ngramsAllRows.length > 0 && ngramsAllRows[0].hasOwnProperty('seg0_count')) {
-        renderNgramsComparisonPage();
-      } else {
-        renderNgramsPage();
-      }
-    }
-  });
-  document.getElementById('ngramsNextPage').addEventListener('click', () => {
-    const totalPages = getTotalPages(ngramsAllRows.length, ngramsPageSize);
-    if (ngramsCurrentPage < totalPages) {
-      ngramsCurrentPage++;
-      if (ngramsAllRows.length > 0 && ngramsAllRows[0].hasOwnProperty('seg0_count')) {
-        renderNgramsComparisonPage();
-      } else {
-        renderNgramsPage();
-      }
-    }
-  });
-  document.getElementById('ngramsLastPage').addEventListener('click', () => {
-    ngramsCurrentPage = getTotalPages(ngramsAllRows.length, ngramsPageSize);
-    if (ngramsAllRows.length > 0 && ngramsAllRows[0].hasOwnProperty('seg0_count')) {
-      renderNgramsComparisonPage();
-    } else {
-      renderNgramsPage();
-    }
-  });
-  document.getElementById('ngramsPageSize').addEventListener('change', (e) => {
-    ngramsPageSize = parseInt(e.target.value);
-    ngramsCurrentPage = 1;
-    if (ngramsAllRows.length > 0 && ngramsAllRows[0].hasOwnProperty('seg0_count')) {
-      renderNgramsComparisonPage();
-    } else {
-      renderNgramsPage();
-    }
-  });
-
-  // Build ngrams comparison table
-  function buildNgramsComparison() {
-    if (ngramsSelectedSegments.size === 0) {
-      ngramTableContainer.innerHTML = '<p class="muted">Select at least one context to compare.</p>';
-      document.getElementById('ngramsPagination').style.display = 'none';
-      return;
-    }
-    
-    const n = parseInt(document.getElementById('ngramsNgramMode').value);
-    const displayMode = document.getElementById('ngramsDisplayMode').value;
-    const queryTerm = document.getElementById('ngramsQuery').value.trim();
-    const ngramsMatchMode = document.getElementById('ngramsMatchMode').value;
-    
-    // Get appropriate indices (separate scene-level and character-level)
-    let sceneIdx = {};
-    let charIdx = {};
-    if (n === 1) {
-      sceneIdx = tokens;
-      charIdx = tokensChar;
-    } else if (n === 2) {
-      sceneIdx = tokens2;
-      charIdx = tokensChar2;
-    } else {
-      sceneIdx = tokens3;
-      charIdx = tokensChar3;
-    }
-    
-    // Build frequency maps for each selected segment
-    const segmentMaps = [];
-    const segmentLabels = [];
-    const segmentTotalWords = [];
-    
-    for (const seg of ngramsSelectedSegments) {
-      const freqMap = new Map();
-      let totalWords = 0;
-      
-      if (seg.type === 'play') {
-        const playId = seg.id;
-        const play = playsById.get(playId);
-        totalWords = play ? play.total_words : 0;
-        
-        // Use scene-level index only
-        for (const [token, postings] of Object.entries(sceneIdx)) {
-          let total = 0;
-          if (Array.isArray(postings)) {
-            for (const posting of postings) {
-              const [scene_id, count] = posting;
-              const chunk = chunkById.get(scene_id);
-              if (chunk && chunk.play_id === playId) total += count;
-            }
-          }
-          if (total > 0) freqMap.set(token, total);
-        }
-      } else if (seg.type === 'genre') {
-        const genre = seg.id;
-        for (const play of plays) {
-          if (play.genre === genre) totalWords += play.total_words || 0;
-        }
-        
-        // Use scene-level index only
-        for (const [token, postings] of Object.entries(sceneIdx)) {
-          let total = 0;
-          if (Array.isArray(postings)) {
-            for (const posting of postings) {
-              const [scene_id, count] = posting;
-              const chunk = chunkById.get(scene_id);
-              if (chunk && chunk.genre === genre) total += count;
-            }
-          }
-          if (total > 0) freqMap.set(token, total);
-        }
-      } else if (seg.type === 'act') {
-        // Parse act ID (format: "playId:actNum")
-        const [playIdStr, actNumStr] = seg.id.split(':');
-        const playId = parseInt(playIdStr);
-        const actNum = parseInt(actNumStr);
-        
-        // Calculate total words for this act
-        for (const chunk of chunks) {
-          if (chunk.play_id === playId && chunk.act === actNum) {
-            totalWords += chunk.total_words || 0;
-          }
-        }
-        
-        // Use scene-level index
-        for (const [token, postings] of Object.entries(sceneIdx)) {
-          let total = 0;
-          if (Array.isArray(postings)) {
-            for (const posting of postings) {
-              const [scene_id, count] = posting;
-              const chunk = chunkById.get(scene_id);
-              if (chunk && chunk.play_id === playId && chunk.act === actNum) {
-                total += count;
-              }
-            }
-          }
-          if (total > 0) freqMap.set(token, total);
-        }
-      } else if (seg.type === 'scene') {
-        const sceneId = seg.id;
-        const chunk = chunkById.get(sceneId);
-        totalWords = chunk ? chunk.total_words : 0;
-        
-        // Use scene-level index
-        for (const [token, postings] of Object.entries(sceneIdx)) {
-          if (Array.isArray(postings)) {
-            for (const posting of postings) {
-              const [scene_id, count] = posting;
-              if (scene_id === sceneId) {
-                freqMap.set(token, count);
-              }
-            }
-          }
-        }
-      } else if (seg.type === 'character') {
-        const charId = seg.id;
-        const char = charactersById.get(charId);
-        totalWords = char ? char.total_words_spoken : 0;
-        
-        // Use character-level index only
-        for (const [token, postings] of Object.entries(charIdx)) {
-          if (Array.isArray(postings)) {
-            for (const posting of postings) {
-              const [char_id, count] = posting;
-              if (char_id === charId) freqMap.set(token, count);
-            }
-          }
-        }
-      }
-      
-      segmentMaps.push(freqMap);
-      segmentLabels.push(seg.label);
-      segmentTotalWords.push(totalWords);
-    }
-    
-    // Collect all unique tokens
-    const allTokens = new Set();
-    for (const freqMap of segmentMaps) {
-      for (const token of freqMap.keys()) {
-        allTokens.add(token);
-      }
-    }
-    
-    // Filter by query if provided
-    let tokensToShow = Array.from(allTokens);
-    if (queryTerm) {
-      if (ngramsMatchMode === 'regex') {
-        try {
-          const pattern = new RegExp(queryTerm, 'i');
-          tokensToShow = tokensToShow.filter(token => pattern.test(token));
-        } catch (e) {
-          ngramTableContainer.innerHTML = `<p class="warning">Invalid regex: ${e.message}</p>`;
-          return;
-        }
-      } else {
-        // Exact term matching (case-insensitive exact match)
-        const lowerQuery = queryTerm.toLowerCase();
-        tokensToShow = tokensToShow.filter(token => token.toLowerCase() === lowerQuery);
-      }
-    }
-    
-    // Build rows with filtered tokens
-    const rows = [];
-    for (const token of tokensToShow) {
-      const row = { token };
-      for (let i = 0; i < segmentMaps.length; i++) {
-        const count = segmentMaps[i].get(token) || 0;
-        const totalWords = segmentTotalWords[i];
-        const pct = totalWords > 0 ? ((count / totalWords) * 100).toFixed(3) : '0.000';
-        row[`seg${i}_count`] = count;
-        row[`seg${i}_pct`] = parseFloat(pct);
-      }
-      // Calculate total count across all segments for sorting
-      row.totalCount = segmentMaps.reduce((sum, map) => sum + (map.get(token) || 0), 0);
-      rows.push(row);
-    }
-    
-    // Store for pagination and sorting
-    ngramsAllRows = rows;
-    ngramsCurrentPage = 1;
-    ngramsSortKey = 'totalCount';
-    ngramsSortDir = 'desc';
-    
-    // Apply default sort
-    sortNgramsRows();
-    
-    // Build HTML table
-    const ngramLabel = n === 1 ? 'Unigram' : n === 2 ? 'Bigram' : 'Trigram';
-    let html = `<h3>${ngramLabel} Comparison Across ${segmentLabels.length} Segment${segmentLabels.length > 1 ? 's' : ''}</h3>`;
-    const matchInfo = queryTerm ? ` matching ${ngramsMatchMode === 'regex' ? 'pattern' : 'term'} "${queryTerm}"` : '';
-    html += `<p class="muted">Showing ${rows.length} unique ${ngramLabel.toLowerCase()}s${matchInfo}</p>`;
-    ngramsColumnDefs = [{ key: 'token', label: ngramLabel, width: '30%' }];
-    
-    // Build column definitions for each segment
-    for (let i = 0; i < segmentLabels.length; i++) {
-      if (displayMode === 'hits') {
-        ngramsColumnDefs.push({ key: `seg${i}_count`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">Hits</span>` });
-      } else if (displayMode === 'pct') {
-        ngramsColumnDefs.push({ key: `seg${i}_pct`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">%</span>` });
-      } else { // both
-        ngramsColumnDefs.push({ key: `seg${i}_count`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">Hits</span>` });
-        ngramsColumnDefs.push({ key: `seg${i}_pct`, label: `${segmentLabels[i]}<br><span class="muted" style="font-weight: normal;">%</span>` });
-      }
-    }
-    const orderedNgramCols = applyColumnOrder(ngramsColumnDefs, ngramsColumnOrder);
-    ngramsColumnOrder = orderedNgramCols.map(c => c.key);
-    html += '<table id="ngramsTable"><thead><tr>';
-    orderedNgramCols.forEach(c => {
-      const widthAttr = c.width ? ` style="width: ${c.width};"` : '';
-      html += `<th class="sortable-header" data-key="${c.key}"${widthAttr}>${c.label}</th>`;
-    });
-    html += '</tr></thead><tbody id="ngramsTableBody"></tbody></table>';
-    ngramTableContainer.innerHTML = html;
-    
-    // Add click handlers to headers
-    document.querySelectorAll('#ngramsTable .sortable-header').forEach(th => {
-      th.style.cursor = 'pointer';
-      th.title = 'Click to sort';
-      th.addEventListener('click', () => {
-        if (Date.now() < getSortClickSuppressedUntil()) return;
-        const key = th.dataset.key;
-        if (ngramsSortKey === key) {
-          ngramsSortDir = (ngramsSortDir === 'asc' ? 'desc' : 'asc');
-        } else {
-          ngramsSortKey = key;
-          ngramsSortDir = (key === 'token' ? 'asc' : 'desc');
-        }
-        sortNgramsRows();
-        ngramsCurrentPage = 1;
-        renderNgramsComparisonPage();
-      });
-      wireHeaderDrag(th, {
-        tableType: 'ngrams',
-        selector: '#ngramsTable thead th',
-        onDropReorder: (sourceKey, targetKey) => {
-          ngramsColumnOrder = moveKeyBeforeTarget(ngramsColumnOrder, sourceKey, targetKey);
-          const headRow = document.querySelector('#ngramsTable thead tr');
-          if (!headRow) return;
-          const sourceEl = headRow.querySelector(`th[data-key="${sourceKey}"]`);
-          const targetEl = headRow.querySelector(`th[data-key="${targetKey}"]`);
-          if (!sourceEl || !targetEl) return;
-          headRow.insertBefore(sourceEl, targetEl);
-          renderNgramsComparisonPage();
-        }
-      });
-    });
-    
-    updateNgramsSortIndicators();
-    renderNgramsComparisonPage();
-    saveNgramsState();
-  }
-  
-  function sortNgramsRows() {
-    if (!ngramsSortKey || !ngramsAllRows.length) return;
-    
-    ngramsAllRows.sort((a, b) => {
-      const av = a[ngramsSortKey];
-      const bv = b[ngramsSortKey];
-      
-      if (typeof av === 'string' || typeof bv === 'string') {
-        return ngramsSortDir === 'asc' 
-          ? String(av).localeCompare(String(bv)) 
-          : String(bv).localeCompare(String(av));
-      }
-      
-      return ngramsSortDir === 'asc' ? (av - bv) : (bv - av);
-    });
-  }
-  
-  function updateNgramsSortIndicators() {
-    document.querySelectorAll('#ngramsTable .sortable-header').forEach(th => {
-      th.classList.remove('sorted-asc', 'sorted-desc');
-      if (th.dataset.key === ngramsSortKey) {
-        th.classList.add(ngramsSortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
-      }
-    });
-  }
-  
-  function renderNgramsComparisonPage() {
-    const tbody = document.getElementById('ngramsTableBody');
-    if (!tbody || !Array.isArray(ngramsAllRows) || ngramsAllRows.length === 0) return;
-    
-    const displayMode = document.getElementById('ngramsDisplayMode').value;
-    const totalPages = getTotalPages(ngramsAllRows.length, ngramsPageSize);
-    const paginatedRows = paginateArray(ngramsAllRows, ngramsCurrentPage, ngramsPageSize);
-    const colKeys = Array.from(document.querySelectorAll('#ngramsTable thead th')).map(th => th.dataset.key);
-    
-    tbody.innerHTML = '';
-    for (const row of paginatedRows) {
-      const tr = document.createElement('tr');
-      let html = '';
-      for (const key of colKeys) {
-        if (key === 'token') html += `<td>${row.token}</td>`;
-        else if (key.endsWith('_pct')) html += `<td>${(Number(row[key]) || 0).toFixed(3)}%</td>`;
-        else html += `<td>${row[key] ?? 0}</td>`;
-      }
-      
-      tr.innerHTML = html;
-      tbody.appendChild(tr);
-    }
-    
-    // Update sort indicators
-    updateNgramsSortIndicators();
-    
-    // Update pagination controls
-    const paginationDiv = document.getElementById('ngramsPagination');
-    paginationDiv.style.display = ngramsAllRows.length > 25 ? 'flex' : 'none';
-    
-    document.getElementById('ngramsPageInfo').textContent = `Page ${ngramsCurrentPage} of ${totalPages}`;
-    document.getElementById('ngramsTotalInfo').textContent = `(${ngramsAllRows.length} total rows)`;
-    
-    document.getElementById('ngramsFirstPage').disabled = ngramsCurrentPage === 1;
-    document.getElementById('ngramsPrevPage').disabled = ngramsCurrentPage === 1;
-    document.getElementById('ngramsNextPage').disabled = ngramsCurrentPage === totalPages;
-    document.getElementById('ngramsLastPage').disabled = ngramsCurrentPage === totalPages;
-    // Apply color scales if enabled
-    applyOrClear('#ngramsTable');
-  }
-  
-  // Ngrams tab controls
-  const debouncedBuildNgrams = debounce(() => { if (ngramsSelectedSegments.size > 0) buildNgramsComparison(); }, 250);
-  const ngramsQueryInput = document.getElementById('ngramsQuery');
-  ngramsQueryInput.addEventListener('keydown', e => { 
-    if (e.key === 'Enter' && ngramsSelectedSegments.size > 0) buildNgramsComparison(); 
-  });
-  ngramsQueryInput.addEventListener('input', () => { checkNgramsPendingChanges(); debouncedBuildNgrams(); });
-  document.getElementById('ngramsNgramMode').addEventListener('change', () => { checkNgramsPendingChanges(); debouncedBuildNgrams(); });
-  document.getElementById('ngramsDisplayMode').addEventListener('change', () => { checkNgramsPendingChanges(); debouncedBuildNgrams(); });
-  document.getElementById('ngramsMatchMode').addEventListener('change', () => { checkNgramsPendingChanges(); debouncedBuildNgrams(); });
-
   // Segments tab controls - track changes
-  const debouncedDoSearch = debounce(doSearch, 250);
   q.addEventListener('input', () => {
     const val = q.value;
     const hasRegexChars = /[.*+?^${}()|[\]\\]/.test(val);
@@ -2802,42 +2104,6 @@
     gran.value = 'play';
     q.value = 'love';
     doSearch();
-  }
-
-  // initial state for ngrams tab - set defaults only if no deep link state
-  if (!appliedDeepLinkState) {
-    document.getElementById('ngramsQuery').value = 'love';
-  
-  // Add some interesting characters from different plays
-  // We'll add Romeo, Juliet, Hamlet, and Ophelia as they're well-known lovers/tragic figures
-  const defaultCharacters = [
-    { play: 'Romeo and Juliet', character: 'ROMEO' },
-    { play: 'Romeo and Juliet', character: 'JULIET' },
-    { play: 'Hamlet', character: 'HAMLET' },
-    { play: 'Hamlet', character: 'OPHELIA' }
-  ];
-  
-  defaultCharacters.forEach(({ play, character }) => {
-    // Find the character in the characters data
-    const charData = characters.find(c => 
-      c.play_id && 
-      plays.find(p => p.id === c.play_id && p.title === play) && 
-      c.character === character
-    );
-    
-    if (charData) {
-      const playInfo = plays.find(p => p.id === charData.play_id);
-      ngramsSelectedSegments.add({
-        type: 'character',
-        id: charData.character,
-        play_id: charData.play_id,
-        label: `${charData.character} (${playInfo.title})`
-      });
-    }
-  });
-  
-    renderSelectedSegments();
-    buildNgramsComparison();
   }
 
   // Local testing override: force a tab open without affecting normal defaults/deep links

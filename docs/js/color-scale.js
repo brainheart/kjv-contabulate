@@ -111,7 +111,6 @@
 
   function applyColorScalesForVisibleTables() {
     applyOrClear('#results');
-    applyOrClear('#ngramsTable');
     applyOrClear('#linesResults');
     renderAllLegends();
   }
