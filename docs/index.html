@@ -685,7 +685,6 @@
 (async function() {
   const q = document.getElementById('q');
   const gran = document.getElementById('gran');
-  const go = document.getElementById('go');
   const matchMode = document.getElementById('matchMode');
   const ngramMode = document.getElementById('ngramMode');
   const theadRow = document.getElementById('headRow');
@@ -822,7 +821,6 @@
         if (!Number.isNaN(i)) {
           extraTerms.splice(i, 1);
           renderExtraTerms();
-          checkSegmentsPendingChanges();
           doSearch();
         }
       });
@@ -836,7 +834,6 @@
     if (!key || existing.includes(key)) return false;
     extraTerms.push(spec);
     renderExtraTerms();
-    checkSegmentsPendingChanges();
     doSearch();
     return true;
   }
@@ -902,22 +899,7 @@
     }
     return p;
   }
-  function getActiveTab() {
-    const btn = document.querySelector('.tab-btn.active');
-    return btn ? btn.dataset.tab : 'segments';
-  }
   let appliedDeepLinkState = false;
-  function mapToArray(m) {
-    const out = [];
-    if (!m) return out;
-    for (const [key, v] of m.entries()) {
-      const o = { key, type: v.type };
-      if (v.type === 'number') { o.min = v.min ?? ''; o.max = v.max ?? ''; }
-      if (v.type === 'text') { o.pattern = v.pattern ?? ''; }
-      out.push(o);
-    }
-    return out;
-  }
   // Legacy base64 state decoder for backward compatibility
   function decodeState(s) {
     try {
@@ -987,21 +969,6 @@
     }
   }
   if (termDisplayModeSel) termDisplayModeSel.value = termDisplayMode;
-
-  // Pending changes tracking
-  let segmentsPendingChanges = false;
-  
-  // Last search state for segments
-  let lastSegmentsState = {
-    query: '',
-    queryMode: '',
-    ngramMode: '',
-    gran: '',
-    matchMode: '',
-    termDisplayMode: 'counts',
-    showZeroRows: false,
-    extraTerms: []
-  };
   
   // Tab switching
   const tabBtns = document.querySelectorAll('.tab-btn');
@@ -1901,70 +1868,8 @@
     });
   }
 
-  function buildHighlightRegexFromState() { return null; }
-
-  async function showLineContext() {}
-
-  // Check if segments settings have changed
-  function checkSegmentsPendingChanges() {
-    const segTermState = getActiveTermsStateParts();
-    const primary = segTermState.primary ? cloneTermSpec(segTermState.primary, 'exact') : null;
-    const currentState = {
-      query: primary ? primary.text : '',
-      queryMode: primary ? primary.mode : '',
-      ngramMode: ngramMode.value,
-      gran: gran.value,
-      matchMode: matchMode.value,
-      termDisplayMode,
-      showZeroRows
-    };
-    const currentExtras = segTermState.extras.map(t => termSpecKey(t, 'exact')).filter(Boolean).sort();
-    const lastExtras = (lastSegmentsState.extraTerms || []).map(t => termSpecKey(t, 'exact')).filter(Boolean).sort();
-    
-    const hasChanges = 
-      currentState.query !== lastSegmentsState.query ||
-      currentState.queryMode !== (lastSegmentsState.queryMode || '') ||
-      currentState.ngramMode !== lastSegmentsState.ngramMode ||
-      currentState.gran !== lastSegmentsState.gran ||
-      currentState.matchMode !== lastSegmentsState.matchMode ||
-      currentState.termDisplayMode !== lastSegmentsState.termDisplayMode ||
-      currentState.showZeroRows !== lastSegmentsState.showZeroRows ||
-      currentExtras.join('|') !== lastExtras.join('|');
-    
-    segmentsPendingChanges = hasChanges;
-    updateSegmentsRefreshButton();
-  }
-  
-  function updateSegmentsRefreshButton() {
-    if (!go) return;
-    if (segmentsPendingChanges) {
-      go.classList.add('refresh-btn-pending');
-      go.textContent = 'Refresh ⟳';
-    } else {
-      go.classList.remove('refresh-btn-pending');
-      go.textContent = 'Refresh';
-    }
-  }
   // Update deep link initially
   updateDeepLink();
-  
-  function saveSegmentsState() {
-    const segTermState = getActiveTermsStateParts();
-    const primary = segTermState.primary ? cloneTermSpec(segTermState.primary, 'exact') : null;
-    lastSegmentsState = {
-      query: primary ? primary.text : '',
-      queryMode: primary ? primary.mode : '',
-      ngramMode: ngramMode.value,
-      gran: gran.value,
-      matchMode: matchMode.value,
-      termDisplayMode,
-      showZeroRows,
-      extraTerms: segTermState.extras.map(t => cloneTermSpec(t, 'exact')).filter(Boolean)
-    };
-    segmentsPendingChanges = false;
-    updateSegmentsRefreshButton();
-    updateDeepLink();
-  }
   
   function doSearch(){
     pruneExtraTermsAgainstPrimary();
@@ -1972,11 +1877,9 @@
     const rows = buildRowsForTerms(terms);
     if (rows !== null) {
       renderRows(rows);
-      saveSegmentsState();
     }
   }
 
-  if (go) go.addEventListener('click', doSearch);
   q.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -2033,9 +1936,9 @@
       }
     });
   }
-  ngramMode.addEventListener('change', () => { checkSegmentsPendingChanges(); doSearch(); });
-  gran.addEventListener('change', () => { checkSegmentsPendingChanges(); doSearch(); });
-  matchMode.addEventListener('change', () => { checkSegmentsPendingChanges(); doSearch(); });
+  ngramMode.addEventListener('change', doSearch);
+  gran.addEventListener('change', doSearch);
+  matchMode.addEventListener('change', doSearch);
 
   // Color scale toggles
   document.querySelectorAll('.color-scale-toggle').forEach(cb => {
@@ -2044,14 +1947,12 @@
   if (showZeroRowsToggle) {
     showZeroRowsToggle.addEventListener('change', (e) => {
       showZeroRows = e.target.checked;
-      checkSegmentsPendingChanges();
       doSearch();
     });
   }
   if (termDisplayModeSel) {
     termDisplayModeSel.addEventListener('change', (e) => {
       termDisplayMode = e.target.value || 'counts';
-      checkSegmentsPendingChanges();
       doSearch();
     });
   }
@@ -2081,19 +1982,7 @@
     });
   }
 
-  // Lines tab controller wrappers (module in docs/js/lines-tab.js)
-  function applyLinesFilters(rows) {
-    if (!linesTabController) return [];
-    return linesTabController.applyFilters(rows);
-  }
-  function renderLinesPage() {
-    if (!linesTabController) return;
-    linesTabController.renderPage();
-  }
-  function updateLinesFilterActions() {
-    if (!linesTabController) return;
-    linesTabController.updateFilterActions();
-  }
+  // Lines tab controller wrapper (module in docs/js/lines-tab.js)
   function doLinesSearch() {
     if (!linesTabController) return;
     linesTabController.doSearch();
