@@ -36,11 +36,11 @@ test.describe('Page Load', () => {
     await expect(page.locator('#ngramMode')).toBeVisible();
   });
 
-  test('has three tabs', async ({ page }) => {
+  test('has two tabs', async ({ page }) => {
     await page.goto('/');
     await waitForDataLoaded(page);
     const tabs = page.locator('.tab-btn');
-    await expect(tabs).toHaveCount(3);
+    await expect(tabs).toHaveCount(2);
   });
 });
 

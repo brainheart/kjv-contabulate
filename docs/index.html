@@ -503,7 +503,6 @@
 
   <div class="tabs" style="display: none;">
     <button class="tab-btn active" data-tab="segments">Rows are Contexts</button>
-    <button class="tab-btn" data-tab="ngrams">Rows are Ngrams</button>
     <button class="tab-btn" data-tab="lines">Rows are Lines</button>
   </div>
 
@@ -2846,6 +2845,7 @@
     const sp = new URLSearchParams(location.search);
     const forcedTab = (sp.get('showtab') || '').trim();
     if (!forcedTab) return;
+    if (forcedTab !== 'segments' && forcedTab !== 'lines') return;
     const btn = document.querySelector(`.tab-btn[data-tab="${forcedTab}"]`);
     if (btn) btn.click();
   })();
