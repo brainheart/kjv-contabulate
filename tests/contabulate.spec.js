@@ -132,6 +132,13 @@ test.describe('Segments Search', () => {
     const count = await sorted.count();
     expect(count).toBeGreaterThan(0);
   });
+
+  test('numeric cells expose rank hints', async ({ page }) => {
+    await search(page, 'love', { gran: 'play' });
+    const rankedCell = page.locator('#results tbody td.ranked-cell').first();
+    await expect(rankedCell).toHaveAttribute('data-rank-hint', /rank:\s*#\d+\s+of\s+\d+/i);
+    await expect(rankedCell).toHaveAttribute('title', /rank:\s*#\d+\s+of\s+\d+/i);
+  });
 });
 
 // ==========================================

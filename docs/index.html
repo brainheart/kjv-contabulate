@@ -143,6 +143,33 @@
     tbody tr:nth-child(even):hover {
       background: rgba(212, 175, 55, 0.08);
     }
+    td.ranked-cell {
+      text-decoration: underline dotted rgba(91, 71, 56, 0.55);
+      text-underline-offset: 0.2em;
+    }
+    @media (hover: hover) {
+      td.ranked-cell { cursor: help; }
+    }
+    .rank-hint-bubble {
+      position: fixed;
+      z-index: 2600;
+      max-width: min(320px, calc(100vw - 1rem));
+      padding: 0.4rem 0.55rem;
+      border-radius: 6px;
+      background: rgba(33, 24, 20, 0.95);
+      color: #fff;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    .rank-hint-bubble.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
     .controls { 
       display:flex;
       flex-wrap: wrap;
@@ -700,6 +727,9 @@
   let extraTerms = [];
   let termDisplayMode = 'counts';
   let showZeroRows = false;
+  const resultsTable = document.getElementById('results');
+  let rankHintBubbleEl = null;
+  let rankHintBubbleTimer = null;
 
   function stopQPlaceholderAnimation(clearNow = false) {
     if (qPlaceholderTimer) {
@@ -1360,6 +1390,104 @@
     return rows;
   }
 
+  function getHeaderLabelText(th) {
+    if (!th) return '';
+    const raw = (th.childNodes[0] && th.childNodes[0].textContent)
+      ? th.childNodes[0].textContent
+      : (th.textContent || '');
+    return raw.replace('⚙', '').trim();
+  }
+
+  function buildNumericRankIndex(rows, colDefs) {
+    const rankIndex = new Map();
+    if (!Array.isArray(rows) || rows.length === 0 || !Array.isArray(colDefs)) return rankIndex;
+
+    colDefs.forEach((col) => {
+      if (!col || col.type !== 'number' || !col.key) return;
+      const valueCounts = new Map();
+      let total = 0;
+      rows.forEach((row) => {
+        const value = Number(row[col.key]);
+        if (!Number.isFinite(value)) return;
+        valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
+        total++;
+      });
+      if (total === 0) return;
+
+      const sortedValues = Array.from(valueCounts.keys()).sort((a, b) => b - a);
+      const ranksByValue = new Map();
+      let seen = 0;
+      sortedValues.forEach((value) => {
+        const tieCount = valueCounts.get(value) || 0;
+        const rank = seen + 1;
+        ranksByValue.set(value, { rank, tieCount });
+        seen += tieCount;
+      });
+      rankIndex.set(col.key, { label: col.label || col.key, total, ranksByValue });
+    });
+
+    return rankIndex;
+  }
+
+  function getNumericRankHint(rankIndex, key, rawValue) {
+    if (!rankIndex || !rankIndex.has(key)) return '';
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return '';
+    const col = rankIndex.get(key);
+    const meta = col && col.ranksByValue ? col.ranksByValue.get(value) : null;
+    if (!meta) return '';
+    const tieNote = meta.tieCount > 1 ? ` (tied with ${meta.tieCount} rows)` : '';
+    return `${col.label} rank: #${meta.rank} of ${col.total}${tieNote}`;
+  }
+
+  function isNoHoverDevice() {
+    return !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+  }
+
+  function ensureRankHintBubble() {
+    if (rankHintBubbleEl) return rankHintBubbleEl;
+    rankHintBubbleEl = document.createElement('div');
+    rankHintBubbleEl.className = 'rank-hint-bubble';
+    rankHintBubbleEl.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(rankHintBubbleEl);
+    return rankHintBubbleEl;
+  }
+
+  function hideRankHintBubble() {
+    if (!rankHintBubbleEl) return;
+    rankHintBubbleEl.classList.remove('visible');
+    if (rankHintBubbleTimer) {
+      clearTimeout(rankHintBubbleTimer);
+      rankHintBubbleTimer = null;
+    }
+  }
+
+  function showRankHintBubbleForCell(cell, message) {
+    if (!cell || !message) return;
+    const bubble = ensureRankHintBubble();
+    bubble.textContent = message;
+    bubble.style.left = '8px';
+    bubble.style.top = '8px';
+    bubble.classList.add('visible');
+
+    const cellRect = cell.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    let left = cellRect.left + ((cellRect.width - bubbleRect.width) / 2);
+    left = Math.max(8, Math.min(left, vw - bubbleRect.width - 8));
+    let top = cellRect.top - bubbleRect.height - 8;
+    if (top < 8) top = cellRect.bottom + 8;
+    if (top + bubbleRect.height > vh - 8) top = Math.max(8, vh - bubbleRect.height - 8);
+    bubble.style.left = `${Math.round(left)}px`;
+    bubble.style.top = `${Math.round(top)}px`;
+
+    if (rankHintBubbleTimer) clearTimeout(rankHintBubbleTimer);
+    rankHintBubbleTimer = setTimeout(() => {
+      hideRankHintBubble();
+    }, 2200);
+  }
+
   function ensureSegmentsSortForColumns(cols, defaultKey, defaultDir = 'desc') {
     const keys = new Set((cols || []).map(c => c && c.key).filter(Boolean));
     if (sortKey && keys.has(sortKey)) {
@@ -1864,7 +1992,13 @@
     const paginatedRows = paginateArray(segmentsAllRows, segmentsCurrentPage, segmentsPageSize);
 
     tbody.innerHTML = '';
-    const cols = Array.from(theadRow.children).map(th => th.dataset.key);
+    const colDefs = Array.from(theadRow.children).map((th) => ({
+      key: th.dataset.key,
+      type: th.dataset.type || 'text',
+      label: getHeaderLabelText(th)
+    }));
+    const cols = colDefs.map((c) => c.key);
+    const numericRankIndex = buildNumericRankIndex(segmentsAllRows, colDefs);
     const granVal = gran.value;
 
     for (const r of paginatedRows) {
@@ -1890,6 +2024,13 @@
           const v = r[k];
           td.textContent = (v === undefined || v === null) ? '' : v;
         }
+        const rankHint = getNumericRankHint(numericRankIndex, k, r[k]);
+        if (rankHint) {
+          td.classList.add('ranked-cell');
+          td.title = rankHint;
+          td.dataset.rankHint = rankHint;
+          td.setAttribute('aria-label', rankHint);
+        }
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -1913,7 +2054,18 @@
   }
 
   // removed copy/jump actions
-  document.getElementById('results').addEventListener('click', (e) => {});
+  if (resultsTable) {
+    resultsTable.addEventListener('click', (e) => {
+      if (!isNoHoverDevice()) return;
+      const td = e.target && typeof e.target.closest === 'function'
+        ? e.target.closest('td[data-rank-hint]')
+        : null;
+      if (!td || !resultsTable.contains(td)) return;
+      showRankHintBubbleForCell(td, td.dataset.rankHint || '');
+    });
+  }
+  window.addEventListener('scroll', hideRankHintBubble, true);
+  window.addEventListener('resize', hideRankHintBubble);
 
   // Clear all filters for current granularity
   const clearSegFiltersBtn = document.getElementById('clearSegmentsFilters');
