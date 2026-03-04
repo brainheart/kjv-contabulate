@@ -302,6 +302,34 @@ test.describe('Play Detail Modal', () => {
     expect(count).toBeGreaterThan(0);
   });
 
+  test('tf-idf column includes mouseover explanation', async ({ page }) => {
+    const link = page.locator('.play-detail-link').first();
+    await link.click();
+    await page.waitForSelector('#playDetailTable tbody tr', { timeout: 15000 });
+
+    const tfidfHeader = page.locator('#playDetailTable thead th[data-key="tfidf"]');
+    const title = await tfidfHeader.getAttribute('title');
+    expect((title || '').toLowerCase()).toContain('term frequency');
+    expect((title || '').toLowerCase()).toContain('inverse document frequency');
+  });
+
+  test('modal sort indicators show active column and direction', async ({ page }) => {
+    const link = page.locator('.play-detail-link').first();
+    await link.click();
+    await page.waitForSelector('#playDetailTable tbody tr', { timeout: 15000 });
+
+    const countHeader = page.locator('#playDetailTable thead th[data-key="count"]');
+    await expect(countHeader).toHaveClass(/sorted-desc/);
+
+    const ngramHeader = page.locator('#playDetailTable thead th[data-key="ngram"]');
+    await ngramHeader.click();
+    await expect(ngramHeader).toHaveClass(/sorted-asc/);
+    await expect(countHeader).not.toHaveClass(/sorted-desc/);
+
+    await ngramHeader.click();
+    await expect(ngramHeader).toHaveClass(/sorted-desc/);
+  });
+
   test('unusualness slider filters results', async ({ page }) => {
     const link = page.locator('.play-detail-link').first();
     await link.click();

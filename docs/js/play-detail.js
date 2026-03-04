@@ -201,11 +201,21 @@
       return out;
     }
 
+    function updateSortIndicators() {
+      sortableHeaders.forEach(th => {
+        const key = th.dataset.key;
+        th.classList.remove('sorted-asc', 'sorted-desc');
+        if (!key || key !== playDetailState.sortKey) return;
+        th.classList.add(playDetailState.sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      });
+    }
+
     function renderRows() {
       const rows = rowsForCurrentSelection();
       const threshold = playDetailState.threshold || 0;
       const filtered = threshold > 0 ? rows.filter(r => r.tfidf >= threshold) : rows.slice();
       const sorted = pdSortRows(filtered);
+      updateSortIndicators();
 
       if (!sorted.length) {
         const emptyMsg = (threshold > 0)
@@ -266,15 +276,21 @@
 
     sortableHeaders.forEach(th => {
       th.style.cursor = 'pointer';
-      th.title = 'Click to sort';
+      const key = th.dataset.key || '';
+      if (key === 'tfidf') {
+        th.title = 'TF-IDF = term frequency in this play × inverse document frequency across all plays. Higher means more distinctive to this play. Click to sort.';
+        th.setAttribute('aria-label', 'TF-IDF score. Hover for explanation. Click to sort.');
+      } else {
+        th.title = 'Click to sort';
+      }
       th.addEventListener('click', () => {
-        const key = th.dataset.key;
-        if (!key) return;
-        if (playDetailState.sortKey === key) {
+        const clickedKey = th.dataset.key;
+        if (!clickedKey) return;
+        if (playDetailState.sortKey === clickedKey) {
           playDetailState.sortDir = (playDetailState.sortDir === 'asc' ? 'desc' : 'asc');
         } else {
-          playDetailState.sortKey = key;
-          playDetailState.sortDir = (key === 'ngram' ? 'asc' : 'desc');
+          playDetailState.sortKey = clickedKey;
+          playDetailState.sortDir = (clickedKey === 'ngram' ? 'asc' : 'desc');
         }
         renderRows();
       });
