@@ -318,6 +318,25 @@ test.describe('Play Detail Modal', () => {
     expect(filteredCount).toBeLessThan(initialCount);
   });
 
+  test('character-name filter is on by default and can be disabled', async ({ page }) => {
+    await search(page, 'the', { gran: 'play' });
+    const hamletLink = page.locator('.play-detail-link', { hasText: 'Hamlet' }).first();
+    await expect(hamletLink).toBeVisible();
+    await hamletLink.click();
+    await page.waitForSelector('#playDetailTable tbody tr', { timeout: 15000 });
+
+    const nameFilterToggle = page.locator('#playDetailFilterNames');
+    await expect(nameFilterToggle).toBeChecked();
+
+    const hamletTermCell = page.locator('#playDetailTable tbody td:nth-child(2)', { hasText: /^hamlet$/i });
+    await expect(hamletTermCell).toHaveCount(0);
+
+    await nameFilterToggle.uncheck();
+    await page.waitForTimeout(250);
+    const hamletTermCount = await hamletTermCell.count();
+    expect(hamletTermCount).toBeGreaterThan(0);
+  });
+
   test('modal closes on X button', async ({ page }) => {
     const link = page.locator('.play-detail-link').first();
     await link.click();

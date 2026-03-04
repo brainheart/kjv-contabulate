@@ -464,6 +464,18 @@
       font-weight: 600;
       color: var(--burgundy);
     }
+    .play-detail-controls .play-detail-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-left: 0.25rem;
+      color: #5b4738;
+      font-weight: 500;
+    }
+    .play-detail-controls .play-detail-toggle input[type="checkbox"] {
+      accent-color: var(--burgundy);
+      cursor: pointer;
+    }
     .play-detail-controls input[type="range"] {
       width: min(320px, 65vw);
       accent-color: var(--burgundy);
@@ -2273,7 +2285,7 @@
   // Play Detail Modal — loaded from js/play-detail.js
   // Initialize with data dependencies
   if (typeof window.initPlayDetail === 'function') {
-    window.initPlayDetail({ chunks, tokens, tokens2, tokens3, playsById, chunkById, escapeHTML });
+    window.initPlayDetail({ chunks, tokens, tokens2, tokens3, playsById, chunkById, characters, escapeHTML });
   }
 
   window.__contabulateReady = true;

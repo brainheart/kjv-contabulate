@@ -5,8 +5,19 @@
   'use strict';
 
   const PLAY_COUNT_TOTAL = 37;
+  const NAME_TOKEN_RE = /[a-z]+/g;
+  const GENERIC_CHARACTER_NAME_TOKENS = new Set([
+    'all', 'and', 'both', 'boy', 'captain', 'chorus', 'citizen', 'citizens', 'clown',
+    'constable', 'doctor', 'duke', 'earl', 'epilogue', 'first', 'fool', 'fourth', 'gentleman',
+    'gentlemen', 'girl', 'governor', 'guard', 'guards', 'herald', 'jailer', 'king', 'knight',
+    'lady', 'lord', 'lords', 'man', 'mayor', 'messenger', 'messengers', 'musician', 'musicians',
+    'nobleman', 'nurse', 'of', 'officer', 'officers', 'old', 'other', 'others', 'page', 'porter',
+    'priest', 'prince', 'prologue', 'queen', 'second', 'senator', 'senators', 'servant',
+    'servants', 'seventh', 'sheriff', 'sixth', 'soldier', 'soldiers', 'tenth', 'the', 'third',
+    'unknown', 'watch', 'widow', 'woman', 'young'
+  ]);
 
-  let sceneToPlayId, playShapeById, chunkById, playsById, tokens, tokens2, tokens3, escapeHTML;
+  let sceneToPlayId, playShapeById, chunkById, playsById, tokens, tokens2, tokens3, escapeHTML, characterNameTokensByPlay;
 
   const playDetailCache = new Map();
   const playDetailState = {
@@ -14,9 +25,12 @@
     currentN: 1,
     sortKey: 'count',
     sortDir: 'desc',
+    excludeCharacterNames: true,
     threshold: 0,
     rowsByN: { 1: [], 2: [], 3: [] },
-    maxByN: { 1: 0, 2: 0, 3: 0 }
+    maxByN: { 1: 0, 2: 0, 3: 0 },
+    rowsByNNoNames: { 1: [], 2: [], 3: [] },
+    maxByNNoNames: { 1: 0, 2: 0, 3: 0 }
   };
   let playDetailEls = null;
 
@@ -41,6 +55,64 @@
     return `<span class="play-detail-link" data-play-id="${Number(playId)}">${safe}</span>`;
   }
 
+  function tokenizeName(name) {
+    return String(name || '').toLowerCase().match(NAME_TOKEN_RE) || [];
+  }
+
+  function buildCharacterNameTokensByPlay(characters) {
+    const byPlay = new Map();
+    for (const ch of characters || []) {
+      const playId = Number(ch && ch.play_id);
+      if (!Number.isInteger(playId)) continue;
+
+      const rawTokens = tokenizeName(ch.name);
+      if (!rawTokens.length) continue;
+
+      const filteredTokens = Array.from(new Set(rawTokens.filter(tok => (
+        tok.length >= 2 && !GENERIC_CHARACTER_NAME_TOKENS.has(tok)
+      ))));
+      if (!filteredTokens.length) continue;
+
+      if (!byPlay.has(playId)) byPlay.set(playId, new Set());
+      const tokSet = byPlay.get(playId);
+      for (const tok of filteredTokens) tokSet.add(tok);
+    }
+    return byPlay;
+  }
+
+  function ngramContainsCharacterName(ngram, playId) {
+    const nameTokens = characterNameTokensByPlay && characterNameTokensByPlay.get(playId);
+    if (!nameTokens || nameTokens.size === 0) return false;
+
+    const toks = String(ngram || '').toLowerCase().split(' ');
+    for (const tok of toks) {
+      if (nameTokens.has(tok)) return true;
+    }
+    return false;
+  }
+
+  function maxTfIdfFromRows(rows) {
+    let max = 0;
+    for (const row of rows || []) {
+      if (row.tfidf > max) max = row.tfidf;
+    }
+    return max;
+  }
+
+  function rowsForCurrentSelection() {
+    const n = playDetailState.currentN;
+    return playDetailState.excludeCharacterNames
+      ? (playDetailState.rowsByNNoNames[n] || [])
+      : (playDetailState.rowsByN[n] || []);
+  }
+
+  function maxForCurrentSelection() {
+    const n = playDetailState.currentN;
+    return playDetailState.excludeCharacterNames
+      ? (playDetailState.maxByNNoNames[n] || 0)
+      : (playDetailState.maxByN[n] || 0);
+  }
+
   function ensurePlayDetailModal() {
     if (playDetailEls) return playDetailEls;
 
@@ -63,6 +135,10 @@
             <label for="playDetailSlider">Unusualness</label>
             <input id="playDetailSlider" type="range" min="0" max="0" value="0" step="0.0001">
             <span class="play-detail-value" id="playDetailValue">0</span>
+            <label class="play-detail-toggle" for="playDetailFilterNames">
+              <input id="playDetailFilterNames" type="checkbox" checked>
+              Exclude character names
+            </label>
           </div>
           <div class="play-detail-loading" id="playDetailLoading">Computing...</div>
           <table id="playDetailTable" style="display:none;">
@@ -89,6 +165,7 @@
     const tbodyEl = overlay.querySelector('#playDetailTableBody');
     const titleEl = overlay.querySelector('#playDetailTitle');
     const metaEl = overlay.querySelector('#playDetailMeta');
+    const filterNamesToggle = overlay.querySelector('#playDetailFilterNames');
     const tabBtns = Array.from(overlay.querySelectorAll('.play-detail-tab-btn'));
     const sortableHeaders = Array.from(overlay.querySelectorAll('th[data-key]'));
 
@@ -99,7 +176,7 @@
     }
 
     function updateSliderUi() {
-      const max = playDetailState.maxByN[playDetailState.currentN] || 0;
+      const max = maxForCurrentSelection();
       slider.max = String(max);
       slider.min = '0';
       slider.step = String(max > 0 ? Math.max(max / 400, 0.0001) : 0.0001);
@@ -125,13 +202,18 @@
     }
 
     function renderRows() {
-      const rows = playDetailState.rowsByN[playDetailState.currentN] || [];
+      const rows = rowsForCurrentSelection();
       const threshold = playDetailState.threshold || 0;
       const filtered = threshold > 0 ? rows.filter(r => r.tfidf >= threshold) : rows.slice();
       const sorted = pdSortRows(filtered);
 
       if (!sorted.length) {
-        tbodyEl.innerHTML = '<tr><td colspan="4" class="muted">No n-grams at this unusualness threshold.</td></tr>';
+        const emptyMsg = (threshold > 0)
+          ? 'No n-grams at this unusualness threshold.'
+          : (playDetailState.excludeCharacterNames
+            ? 'No n-grams remain after excluding character names.'
+            : 'No n-grams available.');
+        tbodyEl.innerHTML = `<tr><td colspan="4" class="muted">${emptyMsg}</td></tr>`;
         return;
       }
 
@@ -174,6 +256,14 @@
       renderRows();
     });
 
+    if (filterNamesToggle) {
+      filterNamesToggle.addEventListener('change', () => {
+        playDetailState.excludeCharacterNames = !!filterNamesToggle.checked;
+        updateSliderUi();
+        renderRows();
+      });
+    }
+
     sortableHeaders.forEach(th => {
       th.style.cursor = 'pointer';
       th.title = 'Click to sort';
@@ -196,7 +286,7 @@
     });
 
     playDetailEls = {
-      overlay, loading, table, titleEl, metaEl, setLoading, setTab, updateSliderUi, renderRows
+      overlay, loading, table, titleEl, metaEl, filterNamesToggle, setLoading, setTab, updateSliderUi, renderRows
     };
     return playDetailEls;
   }
@@ -234,7 +324,7 @@
       const idf = Math.log(PLAY_COUNT_TOTAL / df);
       const tfidf = tf * idf;
       if (tfidf > maxTfIdf) maxTfIdf = tfidf;
-      rows.push({ ngram, count: tf, tfidf });
+      rows.push({ ngram, count: tf, tfidf, containsCharacterName: ngramContainsCharacterName(ngram, playId) });
     }
 
     rows.sort((a, b) => (b.count - a.count) || a.ngram.localeCompare(b.ngram));
@@ -244,7 +334,12 @@
   async function computePlayDetailData(playId) {
     if (playDetailCache.has(playId)) return playDetailCache.get(playId);
 
-    const result = { rowsByN: { 1: [], 2: [], 3: [] }, maxByN: { 1: 0, 2: 0, 3: 0 } };
+    const result = {
+      rowsByN: { 1: [], 2: [], 3: [] },
+      maxByN: { 1: 0, 2: 0, 3: 0 },
+      rowsByNNoNames: { 1: [], 2: [], 3: [] },
+      maxByNNoNames: { 1: 0, 2: 0, 3: 0 }
+    };
     const modal = ensurePlayDetailModal();
 
     modal.setLoading('Computing unigrams...');
@@ -265,6 +360,12 @@
     result.rowsByN[3] = t.rows;
     result.maxByN[3] = t.maxTfIdf;
 
+    for (const n of [1, 2, 3]) {
+      const noNames = result.rowsByN[n].filter(row => !row.containsCharacterName);
+      result.rowsByNNoNames[n] = noNames;
+      result.maxByNNoNames[n] = maxTfIdfFromRows(noNames);
+    }
+
     playDetailCache.set(playId, result);
     return result;
   }
@@ -278,9 +379,12 @@
     playDetailState.currentN = 1;
     playDetailState.sortKey = 'count';
     playDetailState.sortDir = 'desc';
+    playDetailState.excludeCharacterNames = true;
     playDetailState.threshold = 0;
     playDetailState.rowsByN = { 1: [], 2: [], 3: [] };
     playDetailState.maxByN = { 1: 0, 2: 0, 3: 0 };
+    playDetailState.rowsByNNoNames = { 1: [], 2: [], 3: [] };
+    playDetailState.maxByNNoNames = { 1: 0, 2: 0, 3: 0 };
 
     const shape = playShapeById.get(playId) || { scenes: new Set(), acts: new Set() };
     const year = play.first_performance_year || 'Unknown year';
@@ -291,6 +395,7 @@
 
     modal.titleEl.textContent = play.title || play.abbr || 'Unknown play';
     modal.metaEl.textContent = `${play.genre || 'Unknown genre'} \u00b7 ${year} \u00b7 ${totalWords} words \u00b7 ${totalLines} lines \u00b7 ${scenes} scenes \u00b7 ${acts} acts`;
+    if (modal.filterNamesToggle) modal.filterNamesToggle.checked = true;
     modal.overlay.classList.add('open');
     modal.setLoading('Computing...');
     modal.updateSliderUi();
@@ -300,6 +405,8 @@
 
     playDetailState.rowsByN = data.rowsByN;
     playDetailState.maxByN = data.maxByN;
+    playDetailState.rowsByNNoNames = data.rowsByNNoNames;
+    playDetailState.maxByNNoNames = data.maxByNNoNames;
     modal.loading.style.display = 'none';
     modal.table.style.display = 'table';
     modal.setTab(1);
@@ -340,6 +447,7 @@
     tokens2 = deps.tokens2;
     tokens3 = deps.tokens3;
     escapeHTML = deps.escapeHTML;
+    characterNameTokensByPlay = buildCharacterNameTokensByPlay(deps.characters || []);
   };
 
   window.isPlayDetailCell = isPlayDetailCell;
