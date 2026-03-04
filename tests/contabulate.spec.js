@@ -91,6 +91,13 @@ test.describe('Segments Search', () => {
     expect(count).toBeGreaterThan(0);
   });
 
+  test('character granularity shows speech count column', async ({ page }) => {
+    await search(page, 'love', { gran: 'character' });
+    const headers = page.locator('#results thead th');
+    const texts = await headers.allTextContents();
+    expect(texts.some(t => /speeches/i.test(t))).toBeTruthy();
+  });
+
   test('line granularity returns results', async ({ page }) => {
     // Tabs container is hidden until search; make it visible then click
     await search(page, 'love', { gran: 'play' });

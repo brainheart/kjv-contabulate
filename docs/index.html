@@ -1704,8 +1704,9 @@
           ensureRow(c.character_id, () => {
             const totalWords = c.total_words_spoken || 0;
             const ngramCount = Math.max(0, totalWords - (n - 1));
+            const numSpeeches = c.num_speeches || 0;
             const gender = (c.gender ?? c.sex ?? 'A').toString().toUpperCase();
-            return { character_id:c.character_id, play_id:c.play_id, play_title:c.play_title, name:c.name, gender, total_words_spoken:totalWords, ngram_count:ngramCount };
+            return { character_id:c.character_id, play_id:c.play_id, play_title:c.play_title, name:c.name, gender, num_speeches:numSpeeches, total_words_spoken:totalWords, ngram_count:ngramCount };
           });
         });
       }
@@ -1923,6 +1924,7 @@
         {key:'name', label:'Character', defaultDir:'asc', type:'text'},
         {key:'gender', label:'Gender', defaultDir:'asc', type:'text'},
         {key:'play_title', label:'Play', defaultDir:'asc', type:'text'},
+        {key:'num_speeches', label:'# speeches', type:'number'},
         {key:'ngram_count', label: n===1 ? 'Word count' : n===2 ? 'Bigram count' : 'Trigram count', type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1933,8 +1935,9 @@
           const row = ensureRow(char_id, () => {
             const totalWords = c.total_words_spoken || 0;
             const ngramCount = Math.max(0, totalWords - (n - 1));
+            const numSpeeches = c.num_speeches || 0;
             const gender = (c.gender ?? c.sex ?? 'A').toString().toUpperCase();
-            return { character_id:c.character_id, play_id:c.play_id, play_title:c.play_title, name:c.name, gender, total_words_spoken:totalWords, ngram_count:ngramCount };
+            return { character_id:c.character_id, play_id:c.play_id, play_title:c.play_title, name:c.name, gender, num_speeches:numSpeeches, total_words_spoken:totalWords, ngram_count:ngramCount };
           });
           const denom = denomFor(n,'character',c);
           row[`${termKeys[termIdx]}_count`] = count;
