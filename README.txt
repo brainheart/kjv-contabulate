@@ -1,1 +1,1 @@
-Run: python build.py --tei-dir tei --out-dir docs
+See README.md for current build and test instructions.

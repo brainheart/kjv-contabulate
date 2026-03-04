@@ -4,8 +4,8 @@ const { test, expect } = require('@playwright/test');
 // Helper: wait for data to load (tokens are fetched async)
 async function waitForDataLoaded(page) {
   await page.waitForFunction(() => {
-    // The search button exists and tabs are visible once data loads
-    return document.querySelector('.tab-btn') !== null;
+    // UI and async startup are complete
+    return document.querySelector('.tab-btn') !== null && window.__contabulateReady === true;
   }, { timeout: 15000 });
 }
 
@@ -102,6 +102,25 @@ test.describe('Segments Search', () => {
     const rows = page.locator('#linesResults tbody tr');
     const count = await rows.count();
     expect(count).toBeGreaterThan(0);
+  });
+
+  test('line granularity disables percentage display modes with an explicit hint', async ({ page }) => {
+    await page.selectOption('#termDisplayMode', 'pct');
+    await page.selectOption('#gran', 'line');
+
+    await expect(page.locator('#termDisplayMode')).toHaveValue('counts');
+    await expect(page.locator('#termDisplayMode option[value="both"]')).toBeDisabled();
+    await expect(page.locator('#termDisplayMode option[value="pct"]')).toBeDisabled();
+    await expect(page.locator('#termDisplayModeHint')).toBeVisible();
+  });
+
+  test('line granularity temporarily forces hits then restores prior display mode', async ({ page }) => {
+    await page.selectOption('#termDisplayMode', 'both');
+    await page.selectOption('#gran', 'line');
+    await expect(page.locator('#termDisplayMode')).toHaveValue('counts');
+
+    await page.selectOption('#gran', 'scene');
+    await expect(page.locator('#termDisplayMode')).toHaveValue('both');
   });
 
   test('bigram search works', async ({ page }) => {

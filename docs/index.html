@@ -548,6 +548,7 @@
           <option value="both">hits + %</option>
           <option value="pct">%</option>
         </select>
+        <span id="termDisplayModeHint" class="muted" style="display: none; font-size: 0.9rem;">Line rows show hits only (% disabled).</span>
         <span style="font-weight: 600;">by</span>
         <select id="gran" style="font-size: 1rem;">
           <option value="genre">Genre</option>
@@ -710,6 +711,7 @@
 <script src="js/lines-tab.js"></script>
 <script>
 (async function() {
+  window.__contabulateReady = false;
   const q = document.getElementById('q');
   const gran = document.getElementById('gran');
   const matchMode = document.getElementById('matchMode');
@@ -717,6 +719,7 @@
   const theadRow = document.getElementById('headRow');
   const tbody = document.querySelector('#results tbody');
   const termDisplayModeSel = document.getElementById('termDisplayMode');
+  const termDisplayModeHint = document.getElementById('termDisplayModeHint');
   const showZeroRowsToggle = document.getElementById('showZeroRows');
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termsList = document.getElementById('termsList');
@@ -726,6 +729,8 @@
   let qPlaceholderDidAnimate = false;
   let extraTerms = [];
   let termDisplayMode = 'counts';
+  let restoreTermDisplayModeAfterLine = false;
+  let lineForcedTermDisplayMode = null;
   let showZeroRows = false;
   const resultsTable = document.getElementById('results');
   let rankHintBubbleEl = null;
@@ -1059,7 +1064,37 @@
       container.style.display = 'none';
     }
   }
-  if (termDisplayModeSel) termDisplayModeSel.value = termDisplayMode;
+  function normalizeTermDisplayMode(value) {
+    return (value === 'both' || value === 'pct' || value === 'counts') ? value : 'counts';
+  }
+  function syncTermDisplayModeForGranularity() {
+    if (!termDisplayModeSel || !gran) return;
+    const isLineGranularity = gran.value === 'line';
+    const bothOption = termDisplayModeSel.querySelector('option[value="both"]');
+    const pctOption = termDisplayModeSel.querySelector('option[value="pct"]');
+    if (bothOption) bothOption.disabled = isLineGranularity;
+    if (pctOption) pctOption.disabled = isLineGranularity;
+    if (termDisplayModeHint) termDisplayModeHint.style.display = isLineGranularity ? 'inline' : 'none';
+
+    if (isLineGranularity) {
+      if (termDisplayMode !== 'counts') {
+        lineForcedTermDisplayMode = normalizeTermDisplayMode(termDisplayMode);
+        restoreTermDisplayModeAfterLine = true;
+      }
+      termDisplayMode = 'counts';
+      termDisplayModeSel.value = 'counts';
+      return;
+    }
+
+    if (restoreTermDisplayModeAfterLine && lineForcedTermDisplayMode && lineForcedTermDisplayMode !== 'counts') {
+      termDisplayMode = lineForcedTermDisplayMode;
+    }
+    termDisplayMode = normalizeTermDisplayMode(termDisplayMode);
+    termDisplayModeSel.value = termDisplayMode;
+    restoreTermDisplayModeAfterLine = false;
+    lineForcedTermDisplayMode = null;
+  }
+  if (termDisplayModeSel) termDisplayModeSel.value = normalizeTermDisplayMode(termDisplayMode);
   
   // Tab switching
   const tabBtns = document.querySelectorAll('.tab-btn');
@@ -1166,7 +1201,7 @@
         if (sp.has('gran')) gran.value = sp.get('gran');
         if (sp.has('mm')) matchMode.value = sp.get('mm');
         if (sp.has('td')) {
-          termDisplayMode = sp.get('td');
+          termDisplayMode = normalizeTermDisplayMode(sp.get('td'));
           if (termDisplayModeSel) termDisplayModeSel.value = termDisplayMode;
         }
         if (sp.has('zr')) {
@@ -1197,10 +1232,11 @@
           }
         }
       } catch(e) { /* continue to finally */ }
-      // Trigger render for segments regardless
-      const terms = getActiveTerms(); if (terms.length) doSearch();
-      applyColorScalesForVisibleTables();
-      updateDeepLink();
+        syncTermDisplayModeForGranularity();
+        // Trigger render for segments regardless
+        const terms = getActiveTerms(); if (terms.length) doSearch();
+        applyColorScalesForVisibleTables();
+        updateDeepLink();
       return;
     }
     // Legacy base64 fallback
@@ -1229,7 +1265,7 @@
       if (st.segments.gran) gran.value = st.segments.gran;
       if (st.segments.matchMode) matchMode.value = st.segments.matchMode;
       if (st.segments.termDisplayMode) {
-        termDisplayMode = st.segments.termDisplayMode;
+        termDisplayMode = normalizeTermDisplayMode(st.segments.termDisplayMode);
         if (termDisplayModeSel) termDisplayModeSel.value = termDisplayMode;
       }
       if (typeof st.segments.showZeroRows === 'boolean') {
@@ -1266,6 +1302,7 @@
           if (linesTabController) linesTabController.replaceColumnFilters(m2);
         }
       }
+      syncTermDisplayModeForGranularity();
       // Trigger renders
       const terms = getActiveTerms(); if (terms.length) doSearch();
       const lqv = document.getElementById('linesQuery').value.trim(); if (lqv) doLinesSearch();
@@ -2085,6 +2122,7 @@
   updateDeepLink();
   
   function doSearch(){
+    syncTermDisplayModeForGranularity();
     pruneExtraTermsAgainstPrimary();
     const terms = getActiveTerms();
     const rows = buildRowsForTerms(terms);
@@ -2165,7 +2203,11 @@
   }
   if (termDisplayModeSel) {
     termDisplayModeSel.addEventListener('change', (e) => {
-      termDisplayMode = e.target.value || 'counts';
+      termDisplayMode = normalizeTermDisplayMode(e.target.value);
+      if (gran.value !== 'line') {
+        restoreTermDisplayModeAfterLine = false;
+        lineForcedTermDisplayMode = null;
+      }
       doSearch();
     });
   }
@@ -2234,6 +2276,7 @@
     window.initPlayDetail({ chunks, tokens, tokens2, tokens3, playsById, chunkById, escapeHTML });
   }
 
+  window.__contabulateReady = true;
 })();
 </script>
   <footer class="site-footer">
