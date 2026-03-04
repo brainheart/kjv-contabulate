@@ -393,6 +393,87 @@ test.describe('Play Detail Modal', () => {
 });
 
 // ==========================================
+// Character Detail Modal
+// ==========================================
+test.describe('Character Detail Modal', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await waitForDataLoaded(page);
+    await search(page, 'love', { gran: 'character' });
+  });
+
+  test('character names are clickable links', async ({ page }) => {
+    const link = page.locator('.character-detail-link').first();
+    await expect(link).toBeVisible();
+  });
+
+  test('clicking character name opens character modal', async ({ page }) => {
+    const link = page.locator('.character-detail-link').first();
+    await link.click();
+    const modal = page.locator('.character-detail-overlay.open');
+    await expect(modal).toBeVisible({ timeout: 8000 });
+  });
+
+  test('character modal defaults to global scope and can switch to within-play scope', async ({ page }) => {
+    const link = page.locator('.character-detail-link').first();
+    await link.click();
+    await page.waitForSelector('#characterDetailTable tbody tr', { timeout: 20000 });
+
+    const scopeSel = page.locator('#characterDetailScope');
+    await expect(scopeSel).toHaveValue('global');
+
+    await scopeSel.selectOption('play');
+    await expect(scopeSel).toHaveValue('play');
+    await page.waitForSelector('#characterDetailTable tbody tr', { timeout: 20000 });
+  });
+
+  test('character modal tf-idf header has explanation and sort indicator updates', async ({ page }) => {
+    const link = page.locator('.character-detail-link').first();
+    await link.click();
+    await page.waitForSelector('#characterDetailTable tbody tr', { timeout: 20000 });
+
+    const tfidfHeader = page.locator('#characterDetailTable thead th[data-key="tfidf"]');
+    const title = await tfidfHeader.getAttribute('title');
+    expect((title || '').toLowerCase()).toContain('term frequency');
+
+    const countHeader = page.locator('#characterDetailTable thead th[data-key="count"]');
+    await expect(countHeader).toHaveClass(/sorted-desc/);
+
+    const ngramHeader = page.locator('#characterDetailTable thead th[data-key="ngram"]');
+    await ngramHeader.click();
+    await expect(ngramHeader).toHaveClass(/sorted-asc/);
+  });
+
+  test('very common words are de-emphasized in character tf-idf', async ({ page }) => {
+    await search(page, 'the', { gran: 'character' });
+    const firstCharacterLink = page.locator('.character-detail-link').first();
+    await expect(firstCharacterLink).toBeVisible();
+    await firstCharacterLink.click();
+    await page.waitForSelector('#characterDetailTable tbody tr', { timeout: 20000 });
+
+    const theRow = page.locator('#characterDetailTable tbody tr')
+      .filter({ has: page.locator('td:nth-child(2)', { hasText: /^the$/i }) })
+      .first();
+    await expect(theRow).toBeVisible();
+    await expect(theRow.locator('td:nth-child(4)')).toHaveText('0.0000');
+  });
+
+  test('character modal meta spells out gender and uses line counts distinct from words', async ({ page }) => {
+    await search(page, 'the', { gran: 'character' });
+    const firstCharacterLink = page.locator('.character-detail-link').first();
+    await expect(firstCharacterLink).toBeVisible();
+    await firstCharacterLink.click();
+    await page.waitForSelector('#characterDetailTable tbody tr', { timeout: 20000 });
+
+    const metaText = await page.locator('#characterDetailMeta').textContent();
+    expect(metaText).toMatch(/\b(Male|Female|Ambiguous)\b/);
+    const m = (metaText || '').match(/(\d+)\s+words\s+·\s+(\d+)\s+lines/i);
+    expect(m).toBeTruthy();
+    expect(Number(m[1])).not.toBe(Number(m[2]));
+  });
+});
+
+// ==========================================
 // Column Reordering
 // ==========================================
 test.describe('Column Reordering', () => {
