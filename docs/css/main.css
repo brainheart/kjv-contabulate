@@ -167,6 +167,66 @@ td.ranked-cell {
   box-shadow: 0 1px 3px var(--shadow);
   border: 1px solid var(--border);
 }
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+}
+.add-column-btn {
+  padding: 0.45rem 0.8rem;
+  font-size: 0.95rem;
+}
+.label-strong {
+  font-weight: 600;
+}
+.control-select {
+  font-size: 1rem;
+}
+.term-display-mode-hint {
+  display: none;
+  font-size: 0.9rem;
+}
+.query-input {
+  flex: 1;
+  min-width: 20rem;
+  font-size: 1rem;
+}
+.query-input-lines {
+  flex: 1;
+  min-width: 20rem;
+  font-size: 1rem;
+  padding: 0.5rem;
+}
+.term-chips-row {
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+}
+.options-row {
+  margin-bottom: 0.5rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.deep-link-wrap {
+  margin-top: 0.25rem;
+  font-size: 0.95rem;
+}
+.deep-link {
+  word-break: break-all;
+  margin-left: 0.25rem;
+}
+.filter-actions {
+  margin-top: 0.35rem;
+}
+.link-btn-no-padding {
+  padding: 0;
+}
+.filters-info {
+  margin-left: 0.35rem;
+}
 .muted { 
   color: #665544;
   font-size: 0.95rem;
@@ -274,6 +334,9 @@ input[type="checkbox"] {
   margin-top: 1rem;
   margin-bottom: 1rem;
   border-bottom: 2px solid var(--border);
+}
+.is-hidden {
+  display: none;
 }
 .tab-btn {
   padding: 0.7rem 1.2rem;

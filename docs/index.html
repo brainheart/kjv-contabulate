@@ -18,29 +18,29 @@
   <h1><a href="../">Contabulate</a>: Shakespeare Tabular Search</h1>
   <p class="muted">Search words, bigrams, or trigrams across plays, characters, genres, and more. Use regex (e.g., <code>^love|death$</code>) or plain text. TEI texts courtesy of <a href="https://www.folgerdigitaltexts.org" target="_blank">Folger Digital Texts</a>.</p>
 
-  <div class="tabs" style="display: none;">
+  <div class="tabs is-hidden">
     <button class="tab-btn active" data-tab="segments">Rows are Contexts</button>
     <button class="tab-btn" data-tab="lines">Rows are Lines</button>
   </div>
 
   <div class="tab-content" id="segmentsTab">
     <div class="controls">
-      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
-        <button id="addColumnBtn" type="button" style="padding: 0.45rem 0.8rem; font-size: 0.95rem;">Add Column</button>
-        <span style="font-weight: 600;">for</span>
-        <select id="ngramMode" style="font-size: 1rem;">
+      <div class="controls-row">
+        <button id="addColumnBtn" class="add-column-btn" type="button">Add Column</button>
+        <span class="label-strong">for</span>
+        <select id="ngramMode" class="control-select">
           <option value="1" selected>single word</option>
           <option value="2">bigram</option>
           <option value="3">trigram</option>
         </select>
-        <select id="termDisplayMode" style="font-size: 1rem;">
+        <select id="termDisplayMode" class="control-select">
           <option value="counts" selected>hits</option>
           <option value="both">hits + %</option>
           <option value="pct">%</option>
         </select>
-        <span id="termDisplayModeHint" class="muted" style="display: none; font-size: 0.9rem;">Line rows show hits only (% disabled).</span>
-        <span style="font-weight: 600;">by</span>
-        <select id="gran" style="font-size: 1rem;">
+        <span id="termDisplayModeHint" class="muted term-display-mode-hint">Line rows show hits only (% disabled).</span>
+        <span class="label-strong">by</span>
+        <select id="gran" class="control-select">
           <option value="genre">Genre</option>
           <option value="play">Play</option>
           <option value="act">Act</option>
@@ -48,21 +48,21 @@
           <option value="line">Line</option>
           <option value="character">Character</option>
         </select>
-        <span style="font-weight: 600;">matching the</span>
-        <select id="matchMode" style="font-size: 1rem;">
+        <span class="label-strong">matching the</span>
+        <select id="matchMode" class="control-select">
           <option value="exact">exact term</option>
           <option value="regex">regex pattern</option>
         </select>
-        <input id="q" type="text" placeholder="Type a search term here, then hit &quot;Add Column&quot;" style="flex: 1; min-width: 20rem; font-size: 1rem;">
+        <input id="q" class="query-input" type="text" placeholder="Type a search term here, then hit &quot;Add Column&quot;">
       </div>
-      <div id="termsList" class="term-chips muted" style="margin-top: 0.35rem; font-size: 0.95rem;">
+      <div id="termsList" class="term-chips term-chips-row muted">
         No search term columns yet.
       </div>
     </div>
 
     <details>
-      <summary class="sr"><strong>Display Options</strong></summary>
-      <div style="margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+      <summary class="sr"><strong>Options</strong></summary>
+      <div class="options-row">
         <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
         <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching line text</label>
         <label><input type="checkbox" id="showZeroRows"> Show zero-hit rows</label>
@@ -84,9 +84,9 @@
         </div>
       </div>
       <div class="color-scale-legend"></div>
-      <div class="deep-link-wrap" style="margin-top: .25rem; font-size: 0.95rem;">
+      <div class="deep-link-wrap">
         <strong>Deep Link:</strong>
-        <a class="deep-link" href="#" target="_blank" rel="noopener" style="word-break: break-all; margin-left: .25rem;"></a>
+        <a class="deep-link" href="#" target="_blank" rel="noopener"></a>
       </div>
     </details>
 
@@ -94,12 +94,12 @@
       <thead><tr id="headRow"></tr></thead>
       <tbody></tbody>
     </table>
-    <div id="segmentsFilterActions" style="margin-top: 0.35rem; display: none;">
-      <button id="clearSegmentsFilters" class="link-btn" style="padding: 0;">Clear all filters for this view</button>
-      <span class="muted" id="segmentsFiltersInfo" style="margin-left: .35rem;"></span>
+    <div id="segmentsFilterActions" class="filter-actions is-hidden">
+      <button id="clearSegmentsFilters" class="link-btn link-btn-no-padding">Clear all filters for this view</button>
+      <span class="muted filters-info" id="segmentsFiltersInfo"></span>
     </div>
     
-    <div class="pagination" id="segmentsPagination" style="display: none;">
+    <div class="pagination is-hidden" id="segmentsPagination">
       <button id="segmentsFirstPage">First</button>
       <button id="segmentsPrevPage">Prev</button>
       <span class="page-info" id="segmentsPageInfo">Page 1 of 1</span>
@@ -118,27 +118,27 @@
     </div>
   </div>
 
-  <div class="tab-content" id="linesTab" style="display: none;">
+  <div class="tab-content is-hidden" id="linesTab">
     <div class="controls">
-      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
-        <span style="font-weight: 600;">Show lines with</span>
-        <select id="linesNgramMode" style="font-size: 1rem;">
+      <div class="controls-row">
+        <span class="label-strong">Show lines with</span>
+        <select id="linesNgramMode" class="control-select">
           <option value="1" selected>single word</option>
           <option value="2">bigram</option>
           <option value="3">trigram</option>
         </select>
-        <span style="font-weight: 600;">matching the</span>
-        <select id="linesMatchMode" style="font-size: 1rem;">
+        <span class="label-strong">matching the</span>
+        <select id="linesMatchMode" class="control-select">
           <option value="exact">exact term</option>
           <option value="regex">regex pattern</option>
         </select>
-        <input type="text" id="linesQuery" placeholder="e.g., death, ^love|death$, to be" value="love" style="flex: 1; min-width: 20rem; font-size: 1rem; padding: 0.5rem;">
+        <input type="text" class="query-input-lines" id="linesQuery" placeholder="e.g., death, ^love|death$, to be" value="love">
       </div>
     </div>
 
     <details>
-      <summary class="sr"><strong>Display Options</strong></summary>
-      <div style="margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+      <summary class="sr"><strong>Options</strong></summary>
+      <div class="options-row">
         <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
         <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching line text</label>
         <button id="downloadLinesCsv" class="download-btn" type="button">Download CSV</button>
@@ -159,9 +159,9 @@
         </div>
       </div>
       <div class="color-scale-legend"></div>
-      <div class="deep-link-wrap" style="margin-top: .25rem; font-size: 0.95rem;">
+      <div class="deep-link-wrap">
         <strong>Deep Link:</strong>
-        <a class="deep-link" href="#" target="_blank" rel="noopener" style="word-break: break-all; margin-left: .25rem;"></a>
+        <a class="deep-link" href="#" target="_blank" rel="noopener"></a>
       </div>
     </details>
 
@@ -169,12 +169,12 @@
       <thead><tr id="linesHeadRow"></tr></thead>
       <tbody id="linesTableBody"></tbody>
     </table>
-    <div id="linesFilterActions" style="margin-top: 0.35rem; display: none;">
-      <button id="clearLinesFilters" class="link-btn" style="padding: 0;">Clear all filters for this view</button>
-      <span class="muted" id="linesFiltersInfo" style="margin-left: .35rem;"></span>
+    <div id="linesFilterActions" class="filter-actions is-hidden">
+      <button id="clearLinesFilters" class="link-btn link-btn-no-padding">Clear all filters for this view</button>
+      <span class="muted filters-info" id="linesFiltersInfo"></span>
     </div>
 
-    <div class="pagination" id="linesPagination" style="display: none;">
+    <div class="pagination is-hidden" id="linesPagination">
       <button id="linesFirstPage">First</button>
       <button id="linesPrevPage">Prev</button>
       <span class="page-info" id="linesPageInfo">Page 1 of 1</span>
