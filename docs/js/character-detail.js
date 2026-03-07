@@ -19,6 +19,10 @@
 
   let charactersById, playsById, tokensChar, tokensChar2, tokensChar3, escapeHTML;
   let characterToPlayId, characterIdsByPlayId, characterNameTokensByPlay, characterLineCountById, characterCountTotal;
+  const setElementHidden = window.setElementHidden || ((el, hidden) => {
+    if (!el || !el.classList) return;
+    el.classList.toggle('is-hidden', !!hidden);
+  });
 
   const characterDetailCache = new Map();
   const characterDetailState = {
@@ -205,7 +209,7 @@
             </select>
           </div>
           <div class="play-detail-loading" id="characterDetailLoading">Computing...</div>
-          <table id="characterDetailTable" style="display:none;">
+          <table id="characterDetailTable" class="is-hidden">
             <thead>
               <tr>
                 <th>Rank</th>
@@ -236,8 +240,8 @@
 
     function setLoading(msg) {
       loading.textContent = msg || 'Computing...';
-      loading.style.display = 'block';
-      table.style.display = 'none';
+      setElementHidden(loading, false);
+      setElementHidden(table, true);
     }
 
     function updateSliderUi() {
@@ -330,8 +334,8 @@
       }
 
       characterDetailState.dataByScope[scope] = data;
-      loading.style.display = 'none';
-      table.style.display = 'table';
+      setElementHidden(loading, true);
+      setElementHidden(table, false);
       updateSliderUi();
       renderRows();
     }

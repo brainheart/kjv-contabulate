@@ -18,6 +18,10 @@
   ]);
 
   let sceneToPlayId, playShapeById, chunkById, playsById, tokens, tokens2, tokens3, escapeHTML, characterNameTokensByPlay;
+  const setElementHidden = window.setElementHidden || ((el, hidden) => {
+    if (!el || !el.classList) return;
+    el.classList.toggle('is-hidden', !!hidden);
+  });
 
   const playDetailCache = new Map();
   const playDetailState = {
@@ -141,7 +145,7 @@
             </label>
           </div>
           <div class="play-detail-loading" id="playDetailLoading">Computing...</div>
-          <table id="playDetailTable" style="display:none;">
+          <table id="playDetailTable" class="is-hidden">
             <thead>
               <tr>
                 <th>Rank</th>
@@ -171,8 +175,8 @@
 
     function setLoading(msg) {
       loading.textContent = msg || 'Computing...';
-      loading.style.display = 'block';
-      table.style.display = 'none';
+      setElementHidden(loading, false);
+      setElementHidden(table, true);
     }
 
     function updateSliderUi() {
@@ -423,8 +427,8 @@
     playDetailState.maxByN = data.maxByN;
     playDetailState.rowsByNNoNames = data.rowsByNNoNames;
     playDetailState.maxByNNoNames = data.maxByNNoNames;
-    modal.loading.style.display = 'none';
-    modal.table.style.display = 'table';
+    setElementHidden(modal.loading, true);
+    setElementHidden(modal.table, false);
     modal.setTab(1);
   }
 

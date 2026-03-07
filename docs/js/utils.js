@@ -170,6 +170,19 @@ function getTotalPages(totalRows, pageSize) {
   return Math.max(1, Math.ceil(totalRows / pageSize));
 }
 
+function setElementHidden(el, hidden) {
+  if (!el || !el.classList) return;
+  el.classList.toggle('is-hidden', !!hidden);
+}
+
+function showElement(el) {
+  setElementHidden(el, false);
+}
+
+function hideElement(el) {
+  setElementHidden(el, true);
+}
+
   // Expose on window
   window.normalizeTerm = normalizeTerm;
   window.parseNumeric = parseNumeric;
@@ -191,4 +204,7 @@ function getTotalPages(totalRows, pageSize) {
   window.debounce = debounce;
   window.paginateArray = paginateArray;
   window.getTotalPages = getTotalPages;
+  window.setElementHidden = setElementHidden;
+  window.showElement = showElement;
+  window.hideElement = hideElement;
 })();

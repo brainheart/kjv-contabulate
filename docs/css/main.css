@@ -76,6 +76,21 @@ button:hover {
   background: #6d1028;
   box-shadow: 0 2px 4px var(--shadow);
 }
+.link-btn {
+  background: transparent;
+  color: var(--burgundy);
+  border: none;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.link-btn:hover {
+  background: transparent;
+  color: #6d1028;
+  box-shadow: none;
+  text-decoration: underline;
+}
 .download-btn {
   background: #0f5b4d;
   border-color: #0f5b4d;
@@ -185,7 +200,6 @@ td.ranked-cell {
   font-size: 1rem;
 }
 .term-display-mode-hint {
-  display: none;
   font-size: 0.9rem;
 }
 .query-input {
@@ -334,9 +348,6 @@ input[type="checkbox"] {
   margin-top: 1rem;
   margin-bottom: 1rem;
   border-bottom: 2px solid var(--border);
-}
-.is-hidden {
-  display: none;
 }
 .tab-btn {
   padding: 0.7rem 1.2rem;
@@ -589,4 +600,7 @@ th { position: sticky; }
 }
 .site-footer a:hover {
   text-decoration: underline;
+}
+.is-hidden {
+  display: none;
 }

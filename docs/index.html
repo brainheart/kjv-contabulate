@@ -38,7 +38,7 @@
           <option value="both">hits + %</option>
           <option value="pct">%</option>
         </select>
-        <span id="termDisplayModeHint" class="muted term-display-mode-hint">Line rows show hits only (% disabled).</span>
+        <span id="termDisplayModeHint" class="muted term-display-mode-hint is-hidden">Line rows show hits only (% disabled).</span>
         <span class="label-strong">by</span>
         <select id="gran" class="control-select">
           <option value="genre">Genre</option>
@@ -303,6 +303,10 @@
   const applyOrClear = window.applyOrClear;
   const applyColorScalesForVisibleTables = window.applyColorScalesForVisibleTables;
   const renderAllLegends = window.renderAllLegends;
+  const setElementHidden = window.setElementHidden || ((el, hidden) => {
+    if (!el || !el.classList) return;
+    el.classList.toggle('is-hidden', !!hidden);
+  });
   function normalizeTermMode(mode) {
     return mode === 'regex' ? 'regex' : 'exact';
   }
@@ -548,11 +552,11 @@
     if (!container) return;
     const count = getSegmentsFiltersMap().size;
     if (count > 0) {
-      container.style.display = 'block';
+      setElementHidden(container, false);
       const info = document.getElementById('segmentsFiltersInfo');
       if (info) info.textContent = `(${count} active filter${count>1?'s':''})`;
     } else {
-      container.style.display = 'none';
+      setElementHidden(container, true);
     }
   }
   function normalizeTermDisplayMode(value) {
@@ -565,7 +569,7 @@
     const pctOption = termDisplayModeSel.querySelector('option[value="pct"]');
     if (bothOption) bothOption.disabled = isLineGranularity;
     if (pctOption) pctOption.disabled = isLineGranularity;
-    if (termDisplayModeHint) termDisplayModeHint.style.display = isLineGranularity ? 'inline' : 'none';
+    if (termDisplayModeHint) setElementHidden(termDisplayModeHint, !isLineGranularity);
 
     if (isLineGranularity) {
       if (termDisplayMode !== 'counts') {
@@ -598,14 +602,8 @@
       tabBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       
-      segmentsTab.style.display = 'none';
-      linesTab.style.display = 'none';
-      
-      if (targetTab === 'segments') {
-        segmentsTab.style.display = 'block';
-      } else if (targetTab === 'lines') {
-        linesTab.style.display = 'block';
-      }
+      setElementHidden(segmentsTab, targetTab !== 'segments');
+      setElementHidden(linesTab, targetTab !== 'lines');
       updateDeepLink();
     });
   });
@@ -1456,7 +1454,7 @@
     const colSpan = Math.max(1, theadRow.children.length || 8);
     if (!rows || rows.length===0){ 
       tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No results.</td></tr>`; 
-      document.getElementById('segmentsPagination').style.display = 'none';
+      setElementHidden(document.getElementById('segmentsPagination'), true);
       updateSegmentsFilterActions();
       return; 
     }
@@ -1466,7 +1464,7 @@
     rows = applySegmentsFilters(rows);
     if (rows.length === 0) { 
       tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No results match the filters.</td></tr>`; 
-      document.getElementById('segmentsPagination').style.display = 'none';
+      setElementHidden(document.getElementById('segmentsPagination'), true);
       updateSegmentsFilterActions();
       return; 
     }
@@ -1486,7 +1484,7 @@
     if (rows.length === 0) {
       const colSpan = Math.max(1, theadRow.children.length || 8);
       tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No results match the filters.</td></tr>`;
-      document.getElementById('segmentsPagination').style.display = 'none';
+      setElementHidden(document.getElementById('segmentsPagination'), true);
       updateSegmentsFilterActions();
       return;
     }
@@ -1577,7 +1575,7 @@
     updateSortIndicators();
 
     const paginationDiv = document.getElementById('segmentsPagination');
-    paginationDiv.style.display = segmentsAllRows.length > 25 ? 'flex' : 'none';
+    setElementHidden(paginationDiv, segmentsAllRows.length <= 25);
 
     document.getElementById('segmentsPageInfo').textContent = `Page ${segmentsCurrentPage} of ${totalPages}`;
     document.getElementById('segmentsTotalInfo').textContent = `(${segmentsAllRows.length} total rows)`;

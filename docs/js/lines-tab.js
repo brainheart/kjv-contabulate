@@ -64,6 +64,16 @@
       return deps.colorScaleState || window.colorScaleState || { highlightEnabled: true };
     }
 
+    function setElementHidden(el, hidden) {
+      const fn = deps.setElementHidden || window.setElementHidden;
+      if (typeof fn === 'function') {
+        fn(el, hidden);
+        return;
+      }
+      if (!el || !el.classList) return;
+      el.classList.toggle('is-hidden', !!hidden);
+    }
+
     function getAllLinesData() {
       if (typeof deps.getAllLines === 'function') return deps.getAllLines() || [];
       return Array.isArray(deps.allLines) ? deps.allLines : [];
@@ -178,12 +188,12 @@
       if (!els.filterActions) return;
       const count = state.columnFilters.size;
       if (count > 0) {
-        els.filterActions.style.display = 'block';
+        setElementHidden(els.filterActions, false);
         if (els.filtersInfo) {
           els.filtersInfo.textContent = `(${count} active filter${count > 1 ? 's' : ''})`;
         }
       } else {
-        els.filterActions.style.display = 'none';
+        setElementHidden(els.filterActions, true);
       }
     }
 
@@ -267,7 +277,7 @@
       updateSortIndicators();
 
       if (els.pagination) {
-        els.pagination.style.display = filtered.length > 25 ? 'flex' : 'none';
+        setElementHidden(els.pagination, filtered.length <= 25);
       }
       if (els.pageInfo) els.pageInfo.textContent = `Page ${state.currentPage} of ${totalPages}`;
       if (els.totalInfo) els.totalInfo.textContent = `(${filtered.length} total lines)`;
@@ -336,7 +346,7 @@
       const query = els.query.value.trim();
       if (!query) {
         els.tableBody.innerHTML = '';
-        els.pagination.style.display = 'none';
+        setElementHidden(els.pagination, true);
         updateFilterActions();
         return;
       }
@@ -344,14 +354,14 @@
       const rows = buildLinesRows(query);
       if (!rows) {
         els.tableBody.innerHTML = '<tr><td colspan="6" class="warning">Invalid search or no data available.</td></tr>';
-        els.pagination.style.display = 'none';
+        setElementHidden(els.pagination, true);
         updateFilterActions();
         return;
       }
 
       if (rows.length === 0) {
         els.tableBody.innerHTML = '<tr><td colspan="6" class="muted">No lines matched.</td></tr>';
-        els.pagination.style.display = 'none';
+        setElementHidden(els.pagination, true);
         updateFilterActions();
         return;
       }
