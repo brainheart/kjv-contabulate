@@ -38,7 +38,6 @@
           <option value="both">hits + %</option>
           <option value="pct">%</option>
         </select>
-        <span id="termDisplayModeHint" class="muted term-display-mode-hint is-hidden">Line rows show hits only (% disabled).</span>
         <span class="label-strong">by</span>
         <select id="gran" class="control-select">
           <option value="genre">Genre</option>
@@ -210,7 +209,6 @@
   const theadRow = document.getElementById('headRow');
   const tbody = document.querySelector('#results tbody');
   const termDisplayModeSel = document.getElementById('termDisplayMode');
-  const termDisplayModeHint = document.getElementById('termDisplayModeHint');
   const showZeroRowsToggle = document.getElementById('showZeroRows');
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termsList = document.getElementById('termsList');
@@ -569,7 +567,8 @@
     const pctOption = termDisplayModeSel.querySelector('option[value="pct"]');
     if (bothOption) bothOption.disabled = isLineGranularity;
     if (pctOption) pctOption.disabled = isLineGranularity;
-    if (termDisplayModeHint) setElementHidden(termDisplayModeHint, !isLineGranularity);
+    if (isLineGranularity) termDisplayModeSel.title = 'Line rows show hits only.';
+    else termDisplayModeSel.removeAttribute('title');
 
     if (isLineGranularity) {
       if (termDisplayMode !== 'counts') {
@@ -1238,10 +1237,9 @@
           }
         });
         if (hasTerm) {
-          const hl = (!colorScaleState.highlightEnabled || matchedNgrams.length === 0 || matchedNgrams.length > 60)
+          row.line_highlight_regex = (matchedNgrams.length === 0 || matchedNgrams.length > 60)
             ? null
             : buildHighlightRegexFromNgrams(matchedNgrams);
-          row.line_html = hl ? highlightHTML(clean, hl) : escapeHTML(clean);
           rowsMap.set(row.id, row);
         }
       }
@@ -1540,8 +1538,10 @@
           td.textContent = r.scene_label;
         } else if (k === 'pct' || k.endsWith('_pct')) {
           td.textContent = fmtPct(r[k] || 0);
-        } else if (k === 'line' && r.line_html) {
-          td.innerHTML = r.line_html;
+        } else if (k === 'line' && r.line != null) {
+          td.innerHTML = (colorScaleState.highlightEnabled && r.line_highlight_regex)
+            ? highlightHTML(r.line, r.line_highlight_regex)
+            : escapeHTML(r.line);
         } else if (typeof isCharacterDetailCell === 'function' && isCharacterDetailCell(granVal, k, r)) {
           const v = r[k];
           if (v !== undefined && v !== null && r.character_id != null) {
@@ -1724,7 +1724,13 @@
   if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
   // Highlight toggle handlers
   document.querySelectorAll('.highlight-toggle').forEach(cb => {
-    cb.addEventListener('change', (e) => { setHighlightEnabled(e.target.checked); updateDeepLink(); });
+    cb.addEventListener('change', (e) => {
+      setHighlightEnabled(e.target.checked);
+      if (linesTabController && typeof linesTabController.renderPage === 'function') {
+        linesTabController.renderPage();
+      }
+      updateDeepLink();
+    });
   });
   syncHighlightToggles();
 
@@ -1763,7 +1769,15 @@
   if (typeof window.initColorScaleModule === 'function') {
     window.initColorScaleModule({ 
       getSegmentsQueryValue: () => (q ? q.value : ''),
+      hasActiveSegmentsSearch: () => {
+        if (q && q.value && q.value.trim()) return true;
+        return getActiveTerms().length > 0;
+      },
       getLinesQueryValue: () => document.getElementById('linesQuery').value,
+      hasActiveLinesSearch: () => {
+        const linesQuery = document.getElementById('linesQuery');
+        return !!(linesQuery && linesQuery.value && linesQuery.value.trim());
+      },
       doSearch: doSearch,
       doLinesSearch: doLinesSearch 
     });

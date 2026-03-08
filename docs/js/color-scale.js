@@ -11,12 +11,14 @@
     colorScaleSteps: 7
   };
 
-  let deps = {
-    getSegmentsQueryValue: () => '',
-    getLinesQueryValue: () => '',
-    doSearch: null,
-    doLinesSearch: null
-  };
+    let deps = {
+      getSegmentsQueryValue: () => '',
+      getLinesQueryValue: () => '',
+      hasActiveSegmentsSearch: null,
+      hasActiveLinesSearch: null,
+      doSearch: null,
+      doLinesSearch: null
+    };
 
   function syncColorScaleToggles() {
     document.querySelectorAll('.color-scale-toggle').forEach(cb => {
@@ -45,16 +47,20 @@
     });
   }
 
-  function setHighlightEnabled(v) {
-    state.highlightEnabled = !!v;
-    syncHighlightToggles();
+    function setHighlightEnabled(v) {
+      state.highlightEnabled = !!v;
+      syncHighlightToggles();
 
-    const segQ = typeof deps.getSegmentsQueryValue === 'function' ? deps.getSegmentsQueryValue() : '';
-    if (segQ && typeof deps.doSearch === 'function') deps.doSearch();
+      const hasSegmentsSearch = (typeof deps.hasActiveSegmentsSearch === 'function')
+        ? !!deps.hasActiveSegmentsSearch()
+        : !!(typeof deps.getSegmentsQueryValue === 'function' ? deps.getSegmentsQueryValue() : '');
+      if (hasSegmentsSearch && typeof deps.doSearch === 'function') deps.doSearch();
 
-    const linesQ = typeof deps.getLinesQueryValue === 'function' ? deps.getLinesQueryValue() : '';
-    if (linesQ && typeof deps.doLinesSearch === 'function') deps.doLinesSearch();
-  }
+      const hasLinesSearch = (typeof deps.hasActiveLinesSearch === 'function')
+        ? !!deps.hasActiveLinesSearch()
+        : !!(typeof deps.getLinesQueryValue === 'function' ? deps.getLinesQueryValue() : '');
+      if (hasLinesSearch && typeof deps.doLinesSearch === 'function') deps.doLinesSearch();
+    }
 
   function clearColorScale(table) {
     if (!table) return;

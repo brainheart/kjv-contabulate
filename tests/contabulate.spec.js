@@ -111,14 +111,48 @@ test.describe('Segments Search', () => {
     expect(count).toBeGreaterThan(0);
   });
 
-  test('line granularity disables percentage display modes with an explicit hint', async ({ page }) => {
+  test('line granularity updates text highlights immediately when highlight toggle changes', async ({ page }) => {
+    await search(page, 'love', { gran: 'line' });
+    await page.locator('#segmentsTab details summary').click();
+
+    const highlightedBefore = await page.locator('#results tbody td .hit').count();
+    expect(highlightedBefore).toBeGreaterThan(0);
+
+    await page.locator('#segmentsTab label', { hasText: 'Highlight matching line text' }).click();
+    await expect(page.locator('#segmentsTab .highlight-toggle')).not.toBeChecked();
+    await expect(page.locator('#results tbody td .hit')).toHaveCount(0);
+
+    await page.locator('#segmentsTab label', { hasText: 'Highlight matching line text' }).click();
+    await expect(page.locator('#segmentsTab .highlight-toggle')).toBeChecked();
+    await expect(page.locator('#results tbody td .hit').first()).toBeVisible();
+  });
+
+  test('lines tab removes text highlights when highlight toggle is unchecked', async ({ page }) => {
+    await search(page, 'love', { gran: 'play' });
+    await page.evaluate(() => { document.querySelector('.tabs').style.display = 'flex'; });
+    await page.click('.tab-btn[data-tab="lines"]');
+    await page.fill('#linesQuery', 'love');
+    await page.press('#linesQuery', 'Enter');
+    await page.waitForSelector('#linesResults tbody tr', { timeout: 10000 });
+    await page.locator('#linesTab details').evaluate(el => { el.open = true; });
+
+    const highlightedBefore = await page.locator('#linesResults tbody td .hit').count();
+    expect(highlightedBefore).toBeGreaterThan(0);
+
+    await page.locator('#linesTab label', { hasText: 'Highlight matching line text' }).click();
+    await expect(page.locator('#linesTab .highlight-toggle')).not.toBeChecked();
+    await expect(page.locator('#linesResults tbody td .hit')).toHaveCount(0);
+  });
+
+  test('line granularity disables percentage display modes without adding inline helper text', async ({ page }) => {
     await page.selectOption('#termDisplayMode', 'pct');
     await page.selectOption('#gran', 'line');
 
     await expect(page.locator('#termDisplayMode')).toHaveValue('counts');
     await expect(page.locator('#termDisplayMode option[value="both"]')).toBeDisabled();
     await expect(page.locator('#termDisplayMode option[value="pct"]')).toBeDisabled();
-    await expect(page.locator('#termDisplayModeHint')).toBeVisible();
+    await expect(page.locator('#termDisplayMode')).toHaveAttribute('title', 'Line rows show hits only.');
+    await expect(page.locator('#termDisplayModeHint')).toHaveCount(0);
   });
 
   test('line granularity temporarily forces hits then restores prior display mode', async ({ page }) => {

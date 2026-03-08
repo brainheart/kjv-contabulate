@@ -108,7 +108,8 @@
 
       for (const line of allLines) {
         let matches = false;
-        let highlightedText = line.text;
+        let highlightRegex = null;
+        const rawText = line.text == null ? '' : String(line.text);
         const ngrams = window.getLineNgrams(line, n);
 
         if (isRegex) {
@@ -122,9 +123,8 @@
             }
           }
           matches = count > 0;
-          if (matches && getColorScaleState().highlightEnabled) {
-            const hl = matchedNgrams.length > 50 ? null : window.buildHighlightRegexFromNgrams(matchedNgrams);
-            highlightedText = hl ? window.highlightHTML(line.text, hl) : line.text;
+          if (matches) {
+            highlightRegex = matchedNgrams.length > 50 ? null : window.buildHighlightRegexFromNgrams(matchedNgrams);
           }
         } else {
           if (!queryNgram) return null;
@@ -133,10 +133,7 @@
             if (ng === queryNgram) count++;
           }
           matches = count > 0;
-          if (matches && getColorScaleState().highlightEnabled) {
-            const hl = window.buildHighlightRegexFromNgrams([queryNgram]);
-            highlightedText = hl ? window.highlightHTML(line.text, hl) : line.text;
-          }
+          if (matches) highlightRegex = window.buildHighlightRegexFromNgrams([queryNgram]);
         }
 
         if (matches) {
@@ -151,7 +148,8 @@
             scene: line.scene,
             line_num: line.line_num,
             speaker: line.speaker || '',
-            text: highlightedText
+            text: rawText,
+            highlightRegex
           });
         }
       }
@@ -263,7 +261,9 @@
 
         const tdText = document.createElement('td');
         tdText.className = 'line-text';
-        tdText.innerHTML = row.text;
+        tdText.innerHTML = (getColorScaleState().highlightEnabled && row.highlightRegex)
+          ? window.highlightHTML(row.text, row.highlightRegex)
+          : window.escapeHTML(row.text);
 
         tr.appendChild(tdPlay);
         tr.appendChild(tdAct);
@@ -430,7 +430,7 @@
         rows.push(cols.map(c => {
           if (c.key === 'act') return r.act_label || r.act;
           if (c.key === 'scene') return r.scene_label || r.scene;
-          if (c.key === 'text') return window.stripTags(r.text);
+          if (c.key === 'text') return r.text;
           return r[c.key] ?? '';
         }));
       }
