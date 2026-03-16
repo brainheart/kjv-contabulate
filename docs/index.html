@@ -213,12 +213,13 @@
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termsList = document.getElementById('termsList');
   const qPlaceholderText = 'Type a search term here, then hit "Add Column"';
-  const addColumnPromptDelayMs = 5000;
+  const addColumnPromptScheduleMs = [3000, 5000, 10000];
   const allowAddColumnPromptMotion = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let qPlaceholderTimer = null;
   let qPlaceholderIndex = 0;
   let qPlaceholderDidAnimate = false;
   let addColumnPromptTimer = null;
+  let addColumnPromptStepIndex = 0;
   let extraTerms = [];
   let termDisplayMode = 'counts';
   let restoreTermDisplayModeAfterLine = false;
@@ -273,7 +274,15 @@
       clearTimeout(addColumnPromptTimer);
       addColumnPromptTimer = null;
     }
+    addColumnPromptStepIndex = 0;
     if (removeClass && addColumnBtn) addColumnBtn.classList.remove('idle-shimmer');
+  }
+  function scheduleNextAddColumnPrompt() {
+    if (!allowAddColumnPromptMotion || !addColumnBtn || !q || !q.value.trim()) return;
+    if (addColumnPromptStepIndex >= addColumnPromptScheduleMs.length) return;
+    const delayMs = addColumnPromptScheduleMs[addColumnPromptStepIndex];
+    addColumnPromptStepIndex += 1;
+    addColumnPromptTimer = setTimeout(runAddColumnPrompt, delayMs);
   }
   function runAddColumnPrompt() {
     addColumnPromptTimer = null;
@@ -282,12 +291,13 @@
     // Restart the one-shot sheen when the user pauses after editing.
     void addColumnBtn.offsetWidth;
     addColumnBtn.classList.add('idle-shimmer');
+    scheduleNextAddColumnPrompt();
   }
   function scheduleAddColumnPrompt() {
     if (!allowAddColumnPromptMotion || !addColumnBtn || !q) return;
     clearAddColumnPrompt(true);
     if (!q.value.trim()) return;
-    addColumnPromptTimer = setTimeout(runAddColumnPrompt, addColumnPromptDelayMs);
+    scheduleNextAddColumnPrompt();
   }
   if (q) {
     startQPlaceholderAnimation(true);
