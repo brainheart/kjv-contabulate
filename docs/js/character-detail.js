@@ -18,7 +18,7 @@
   ]);
 
   let charactersById, playsById, tokensChar, tokensChar2, tokensChar3, escapeHTML;
-  let characterToPlayId, characterIdsByPlayId, characterNameTokensByPlay, characterLineCountById, characterCountTotal;
+  let characterToPlayId, characterIdsByPlayId, characterNameFiltersByPlay, characterLineCountById, characterCountTotal;
   const setElementHidden = window.setElementHidden || ((el, hidden) => {
     if (!el || !el.classList) return;
     el.classList.toggle('is-hidden', !!hidden);
@@ -89,34 +89,115 @@
     return 'Unknown';
   }
 
-  function buildCharacterNameTokensByPlay(characters) {
+  function createCharacterNameFilter() {
+    return { tokens: new Set(), phrasesByN: { 1: new Set(), 2: new Set(), 3: new Set() } };
+  }
+
+  function ensureCharacterNameFilter(byPlay, playId) {
+    if (!byPlay.has(playId)) byPlay.set(playId, createCharacterNameFilter());
+    return byPlay.get(playId);
+  }
+
+  function addAutoDetectedName(filter, name) {
+    const toks = tokenizeName(name);
+    if (!toks.length) return;
+
+    if (toks.length >= 2 && toks.length <= 3) {
+      filter.phrasesByN[toks.length].add(toks.join(' '));
+    }
+
+    const filteredTokens = Array.from(new Set(toks.filter(tok => (
+      tok.length >= 2 && !GENERIC_CHARACTER_NAME_TOKENS.has(tok)
+    ))));
+    for (const tok of filteredTokens) filter.tokens.add(tok);
+  }
+
+  function addConfigName(filter, name) {
+    const toks = tokenizeName(name);
+    if (!toks.length || toks.length > 3) return;
+    const phrase = toks.join(' ');
+    filter.phrasesByN[toks.length].add(phrase);
+    if (toks.length === 1) filter.tokens.add(toks[0]);
+  }
+
+  function removeConfigName(filter, name) {
+    const toks = tokenizeName(name);
+    if (!toks.length || toks.length > 3) return;
+    const phrase = toks.join(' ');
+    filter.phrasesByN[toks.length].delete(phrase);
+    if (toks.length === 1) filter.tokens.delete(toks[0]);
+  }
+
+  function buildConfigPlayLookup(playsByIdMap) {
+    const lookup = new Map();
+    for (const [playId, play] of playsByIdMap.entries()) {
+      lookup.set(String(playId), playId);
+      if (play && play.abbr) lookup.set(String(play.abbr).trim().toUpperCase(), playId);
+      if (play && play.title) lookup.set(String(play.title).trim().toLowerCase(), playId);
+    }
+    return lookup;
+  }
+
+  function resolveConfigPlayId(key, lookup) {
+    const raw = String(key || '').trim();
+    if (!raw) return null;
+    if (lookup.has(raw)) return lookup.get(raw);
+    const upper = raw.toUpperCase();
+    if (lookup.has(upper)) return lookup.get(upper);
+    const lower = raw.toLowerCase();
+    if (lookup.has(lower)) return lookup.get(lower);
+    return null;
+  }
+
+  function applyCharacterNameFilterConfig(byPlay, playsByIdMap, config) {
+    if (!config || typeof config !== 'object') return byPlay;
+
+    const playIds = Array.from(playsByIdMap.keys());
+    const globalAdditions = Array.isArray(config.global_additions) ? config.global_additions : [];
+    const globalRemovals = Array.isArray(config.global_removals) ? config.global_removals : [];
+    for (const playId of playIds) {
+      const filter = ensureCharacterNameFilter(byPlay, playId);
+      globalAdditions.forEach(name => addConfigName(filter, name));
+      globalRemovals.forEach(name => removeConfigName(filter, name));
+    }
+
+    const lookup = buildConfigPlayLookup(playsByIdMap);
+    const applyPerPlay = (entries, applyFn) => {
+      for (const [playKey, names] of Object.entries(entries || {})) {
+        const playId = resolveConfigPlayId(playKey, lookup);
+        if (!Number.isInteger(playId)) continue;
+        const filter = ensureCharacterNameFilter(byPlay, playId);
+        (Array.isArray(names) ? names : []).forEach(name => applyFn(filter, name));
+      }
+    };
+
+    applyPerPlay(config.play_additions, addConfigName);
+    applyPerPlay(config.play_removals, removeConfigName);
+    return byPlay;
+  }
+
+  function buildCharacterNameTokensByPlay(characters, playsByIdMap, config) {
     const byPlay = new Map();
     for (const ch of characters || []) {
       const playId = Number(ch && ch.play_id);
       if (!Number.isInteger(playId)) continue;
-
-      const rawTokens = tokenizeName(ch.name);
-      if (!rawTokens.length) continue;
-
-      const filteredTokens = Array.from(new Set(rawTokens.filter(tok => (
-        tok.length >= 2 && !GENERIC_CHARACTER_NAME_TOKENS.has(tok)
-      ))));
-      if (!filteredTokens.length) continue;
-
-      if (!byPlay.has(playId)) byPlay.set(playId, new Set());
-      const tokSet = byPlay.get(playId);
-      for (const tok of filteredTokens) tokSet.add(tok);
+      const filter = ensureCharacterNameFilter(byPlay, playId);
+      addAutoDetectedName(filter, ch.name);
     }
-    return byPlay;
+    return applyCharacterNameFilterConfig(byPlay, playsByIdMap, config);
   }
 
   function ngramContainsCharacterName(ngram, playId) {
-    const nameTokens = characterNameTokensByPlay && characterNameTokensByPlay.get(playId);
-    if (!nameTokens || nameTokens.size === 0) return false;
+    const filter = characterNameFiltersByPlay && characterNameFiltersByPlay.get(playId);
+    if (!filter) return false;
 
-    const toks = String(ngram || '').toLowerCase().split(' ');
+    const phrase = String(ngram || '').toLowerCase().trim();
+    if (!phrase) return false;
+    const toks = phrase.split(' ');
+    const phraseSet = filter.phrasesByN[toks.length];
+    if (phraseSet && phraseSet.has(phrase)) return true;
     for (const tok of toks) {
-      if (nameTokens.has(tok)) return true;
+      if (filter.tokens.has(tok)) return true;
     }
     return false;
   }
@@ -594,7 +675,11 @@
       if (!characterIdsByPlayId.has(pid)) characterIdsByPlayId.set(pid, new Set());
       characterIdsByPlayId.get(pid).add(cid);
     }
-    characterNameTokensByPlay = buildCharacterNameTokensByPlay(chars);
+    characterNameFiltersByPlay = buildCharacterNameTokensByPlay(
+      chars,
+      playsById,
+      deps.characterNameFilterConfig || null
+    );
     characterLineCountById = buildCharacterLineCountById(chars, allLines);
   };
 

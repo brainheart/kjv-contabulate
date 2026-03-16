@@ -434,6 +434,40 @@ test.describe('Play Detail Modal', () => {
     expect(hamletTermCount).toBeGreaterThan(0);
   });
 
+  test('config-backed generic role names are filtered in play detail', async ({ page }) => {
+    await search(page, 'the', { gran: 'play' });
+    const kingLearLink = page.locator('.play-detail-link', { hasText: 'King Lear' }).first();
+    await expect(kingLearLink).toBeVisible();
+    await kingLearLink.click();
+    await page.waitForSelector('#playDetailTable tbody tr', { timeout: 15000 });
+
+    const foolTermCell = page.locator('#playDetailTable tbody td:nth-child(2)', { hasText: /^fool$/i });
+    await expect(foolTermCell).toHaveCount(0);
+
+    await page.locator('#playDetailFilterNames').uncheck();
+    await page.waitForTimeout(250);
+    const foolTermCount = await foolTermCell.count();
+    expect(foolTermCount).toBeGreaterThan(0);
+  });
+
+  test('config-backed alias names are filtered in play detail', async ({ page }) => {
+    await search(page, 'topas', { gran: 'play' });
+    const twelfthNightLink = page.locator('.play-detail-link', { hasText: 'Twelfth Night' }).first();
+    await expect(twelfthNightLink).toBeVisible();
+    await twelfthNightLink.click();
+    await page.waitForSelector('#playDetailTable tbody tr', { timeout: 15000 });
+
+    const topasTermCell = page.locator('#playDetailTable tbody td:nth-child(2)', { hasText: /^topas$/i });
+    const cesarioTermCell = page.locator('#playDetailTable tbody td:nth-child(2)', { hasText: /^cesario$/i });
+    await expect(topasTermCell).toHaveCount(0);
+    await expect(cesarioTermCell).toHaveCount(0);
+
+    await page.locator('#playDetailFilterNames').uncheck();
+    await page.waitForTimeout(250);
+    expect(await topasTermCell.count()).toBeGreaterThan(0);
+    expect(await cesarioTermCell.count()).toBeGreaterThan(0);
+  });
+
   test('modal closes on X button', async ({ page }) => {
     const link = page.locator('.play-detail-link').first();
     await link.click();

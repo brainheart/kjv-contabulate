@@ -652,9 +652,9 @@
     return res.json();
   }
 
-  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[];
+  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null;
   try {
-    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3] = await Promise.all([
+    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig] = await Promise.all([
       loadJSON('data/chunks.json'),
       loadJSON('data/tokens.json'),
       loadJSON('data/tokens2.json'),
@@ -664,6 +664,7 @@
       loadJSON('data/tokens_char.json'),
       loadJSON('data/tokens_char2.json'),
       loadJSON('data/tokens_char3.json'),
+      loadJSON('data/character_name_filter_config.json').catch(() => null),
     ]);
   } catch(e) {
     console.error('Failed to load data:', e);
@@ -1856,13 +1857,13 @@
   // Play Detail Modal — loaded from js/play-detail.js
   // Initialize with data dependencies
   if (typeof window.initPlayDetail === 'function') {
-    window.initPlayDetail({ chunks, tokens, tokens2, tokens3, playsById, chunkById, characters, escapeHTML });
+    window.initPlayDetail({ chunks, tokens, tokens2, tokens3, playsById, chunkById, characters, characterNameFilterConfig, escapeHTML });
   }
 
   // Character Detail Modal — loaded from js/character-detail.js
   // Initialize with data dependencies
   if (typeof window.initCharacterDetail === 'function') {
-    window.initCharacterDetail({ characters, playsById, tokensChar, tokensChar2, tokensChar3, allLines, escapeHTML });
+    window.initCharacterDetail({ characters, playsById, tokensChar, tokensChar2, tokensChar3, allLines, characterNameFilterConfig, escapeHTML });
   }
 
   window.__contabulateReady = true;
