@@ -213,9 +213,12 @@
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termsList = document.getElementById('termsList');
   const qPlaceholderText = 'Type a search term here, then hit "Add Column"';
+  const addColumnPromptDelayMs = 5000;
+  const allowAddColumnPromptMotion = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let qPlaceholderTimer = null;
   let qPlaceholderIndex = 0;
   let qPlaceholderDidAnimate = false;
+  let addColumnPromptTimer = null;
   let extraTerms = [];
   let termDisplayMode = 'counts';
   let restoreTermDisplayModeAfterLine = false;
@@ -265,6 +268,27 @@
     }
     tickQPlaceholderAnimation();
   }
+  function clearAddColumnPrompt(removeClass = true) {
+    if (addColumnPromptTimer) {
+      clearTimeout(addColumnPromptTimer);
+      addColumnPromptTimer = null;
+    }
+    if (removeClass && addColumnBtn) addColumnBtn.classList.remove('idle-shimmer');
+  }
+  function runAddColumnPrompt() {
+    addColumnPromptTimer = null;
+    if (!allowAddColumnPromptMotion || !addColumnBtn || !q || !q.value.trim()) return;
+    addColumnBtn.classList.remove('idle-shimmer');
+    // Restart the one-shot sheen when the user pauses after editing.
+    void addColumnBtn.offsetWidth;
+    addColumnBtn.classList.add('idle-shimmer');
+  }
+  function scheduleAddColumnPrompt() {
+    if (!allowAddColumnPromptMotion || !addColumnBtn || !q) return;
+    clearAddColumnPrompt(true);
+    if (!q.value.trim()) return;
+    addColumnPromptTimer = setTimeout(runAddColumnPrompt, addColumnPromptDelayMs);
+  }
   if (q) {
     startQPlaceholderAnimation(true);
     q.addEventListener('focus', () => {
@@ -279,6 +303,11 @@
       } else if (document.activeElement !== q) {
         startQPlaceholderAnimation(false);
       }
+    });
+  }
+  if (addColumnBtn) {
+    addColumnBtn.addEventListener('animationend', (e) => {
+      if (e.animationName === 'addColumnShimmer') addColumnBtn.classList.remove('idle-shimmer');
     });
   }
 
@@ -1136,10 +1165,12 @@
     }
 
     const genreTotals = new Map();
+    const genrePlayCounts = new Map();
     if (granVal === 'genre') {
       plays.forEach(play => {
         const g = play.genre || 'unknown';
         genreTotals.set(g, (genreTotals.get(g) || 0) + (play.total_words || 0));
+        genrePlayCounts.set(g, (genrePlayCounts.get(g) || 0) + 1);
       });
     }
     if ((showZeroRows || !hasTerms) && granVal !== 'line') {
@@ -1175,7 +1206,7 @@
         for (const [genre, totalWords] of genreTotals.entries()) {
           ensureRow(genre, () => {
             const ngramCount = Math.max(0, totalWords - (n - 1));
-            return { genre, total_words: totalWords, ngram_count:ngramCount };
+            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
           });
         }
       } else if (granVal === 'character') {
@@ -1378,6 +1409,7 @@
     if (granVal==='genre'){
       const baseCols = [
         {key:'genre', label:'Genre', defaultDir:'asc', type:'text'},
+        {key:'num_plays', label:'# plays', type:'number'},
         {key:'ngram_count', label: n===1 ? 'Word count' : n===2 ? 'Bigram count' : 'Trigram count', type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1392,7 +1424,7 @@
           const totalWords = genreTotals.get(genre) || 0;
           const row = ensureRow(genre, () => {
             const ngramCount = Math.max(0, totalWords - (n - 1));
-            return { genre, total_words: totalWords, ngram_count:ngramCount };
+            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
           });
           const denom = denomFor(n, 'genre', { total_words: totalWords });
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1657,6 +1689,7 @@
   q.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      clearAddColumnPrompt(true);
       const added = addExtraTerm(q.value);
       if (added) q.value = '';
     }
@@ -1700,9 +1733,12 @@
     if (hasRegexChars && matchMode.value === 'exact') {
       matchMode.value = 'regex';
     }
+    if (val.trim()) scheduleAddColumnPrompt();
+    else clearAddColumnPrompt(true);
   });
   if (addColumnBtn) {
     addColumnBtn.addEventListener('click', () => {
+      clearAddColumnPrompt(true);
       const added = addExtraTerm(q.value);
       if (added) {
         q.value = '';

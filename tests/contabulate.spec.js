@@ -77,6 +77,20 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.includes('Location'))).toBeTruthy();
   });
 
+  test('genre granularity shows play count column and genre totals', async ({ page }) => {
+    await search(page, 'the', { gran: 'genre' });
+    const headers = page.locator('#results thead th');
+    const texts = await headers.allTextContents();
+    expect(texts.some(t => /plays/i.test(t))).toBeTruthy();
+
+    const rows = await page.locator('#results tbody tr').evaluateAll((trs) =>
+      trs.map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => (td.textContent || '').trim()))
+    );
+    const comedyRow = rows.find((cells) => cells[0].toLowerCase() === 'comedy');
+    expect(comedyRow).toBeTruthy();
+    expect(comedyRow).toContain('13');
+  });
+
   test('act granularity returns results', async ({ page }) => {
     await search(page, 'love', { gran: 'act' });
     const rows = page.locator('#results tbody tr');
@@ -365,6 +379,7 @@ test.describe('Play Detail Modal', () => {
     const title = await tfidfHeader.getAttribute('title');
     expect((title || '').toLowerCase()).toContain('term frequency');
     expect((title || '').toLowerCase()).toContain('inverse document frequency');
+    expect((title || '').toLowerCase()).toContain('idf = ln(n / df)');
   });
 
   test('modal sort indicators show active column and direction', async ({ page }) => {
@@ -489,6 +504,7 @@ test.describe('Character Detail Modal', () => {
     const tfidfHeader = page.locator('#characterDetailTable thead th[data-key="tfidf"]');
     const title = await tfidfHeader.getAttribute('title');
     expect((title || '').toLowerCase()).toContain('term frequency');
+    expect((title || '').toLowerCase()).toContain('idf = max(0, ln((n - df + 0.5) / (df + 0.5)))');
 
     const countHeader = page.locator('#characterDetailTable thead th[data-key="count"]');
     await expect(countHeader).toHaveClass(/sorted-desc/);

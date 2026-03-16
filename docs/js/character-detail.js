@@ -384,7 +384,7 @@
       th.style.cursor = 'pointer';
       const key = th.dataset.key || '';
       if (key === 'tfidf') {
-        th.title = 'TF-IDF = term frequency for this character × inverse document frequency across the selected character scope. Very common terms are clamped to 0; higher means more distinctive.';
+        th.title = 'TF-IDF = term frequency for this character × inverse document frequency across the selected character scope. IDF = max(0, ln((N - df + 0.5) / (df + 0.5))), where N is the number of characters in scope and df is the number containing the term. Very common terms are clamped to 0; higher means more distinctive.';
         th.setAttribute('aria-label', 'TF-IDF score. Hover for explanation. Click to sort.');
       } else {
         th.title = 'Click to sort';

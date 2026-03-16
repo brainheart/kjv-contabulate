@@ -282,7 +282,7 @@
       th.style.cursor = 'pointer';
       const key = th.dataset.key || '';
       if (key === 'tfidf') {
-        th.title = 'TF-IDF = term frequency in this play × inverse document frequency across all plays. Higher means more distinctive to this play. Click to sort.';
+        th.title = 'TF-IDF = term frequency in this play × inverse document frequency across all plays. IDF = ln(N / df), where N is the number of plays and df is the number of plays containing the term. Higher means more distinctive to this play. Click to sort.';
         th.setAttribute('aria-label', 'TF-IDF score. Hover for explanation. Click to sort.');
       } else {
         th.title = 'Click to sort';
