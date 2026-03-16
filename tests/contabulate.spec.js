@@ -193,6 +193,19 @@ test.describe('Segments Search', () => {
     expect(count).toBeGreaterThan(0);
   });
 
+  test('adding a new term switches sort to that term descending', async ({ page }) => {
+    await search(page, 'love', { gran: 'play' });
+    await expect(page.locator('#results thead th.sorted-desc')).toContainText(/love/i);
+
+    await page.fill('#q', 'death');
+    await page.press('#q', 'Enter');
+
+    const sortedDesc = page.locator('#results thead th.sorted-desc');
+    await expect(sortedDesc).toHaveCount(1);
+    await expect(sortedDesc).toContainText(/death/i);
+    await expect(page.locator('#results thead th.sorted-desc', { hasText: /love/i })).toHaveCount(0);
+  });
+
   test('numeric cells expose rank hints', async ({ page }) => {
     await search(page, 'love', { gran: 'play' });
     const rankedCell = page.locator('#results tbody td.ranked-cell').first();

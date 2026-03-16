@@ -423,7 +423,7 @@
     if (!key || existing.includes(key)) return false;
     extraTerms.push(spec);
     renderExtraTerms();
-    doSearch();
+    doSearch(extraTerms.length - 1);
     return true;
   }
   // Sort state defaults (declare before deep-link logic uses them)
@@ -1026,6 +1026,18 @@
     sortDir = defaultDir;
   }
 
+  function applyPreferredTermSort(termCols, preferredTermIndex) {
+    if (!Number.isInteger(preferredTermIndex) || preferredTermIndex < 0) return false;
+    const preferredPrefix = `t${preferredTermIndex}_`;
+    const preferredKey = `t${preferredTermIndex}_count`;
+    const preferredCol = (termCols || []).find(c => c && c.key === preferredKey)
+      || (termCols || []).find(c => c && typeof c.key === 'string' && c.key.startsWith(preferredPrefix));
+    if (!preferredCol) return false;
+    sortKey = preferredCol.key;
+    sortDir = 'desc';
+    return true;
+  }
+
   function denomFor(n, levelKey, meta){
     const tw = (levelKey==='scene') ? (meta.total_words||0)
                : (levelKey==='act') ? (actTotals.get(`${meta.play_id}:${meta.act}`)||0)
@@ -1046,7 +1058,7 @@
     return Array.from(merged.entries());
   }
 
-  function buildRowsForTerms(terms){
+  function buildRowsForTerms(terms, preferredSortTermIndex = null){
     const granVal = gran.value;
     const ngramModeVal = ngramMode.value;
     const n = parseInt(ngramModeVal, 10);
@@ -1252,7 +1264,9 @@
       baseCols.push(...termCols);
       baseCols.push({ key: 'line', label: 'Line', type: 'text' });
       setHeaders(baseCols);
-      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
       return finalizeRows(true, false);
     }
 
@@ -1280,7 +1294,9 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -1317,7 +1333,9 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -1351,7 +1369,9 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -1381,7 +1401,9 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
       return finalizeRows(includeCounts, includePct);
     }
 
@@ -1412,7 +1434,9 @@
       });
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
-      ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
       return finalizeRows(includeCounts, includePct);
     }
   }
@@ -1620,11 +1644,11 @@
   // Update deep link initially
   updateDeepLink();
   
-  function doSearch(){
+  function doSearch(preferredSortTermIndex = null){
     syncTermDisplayModeForGranularity();
     pruneExtraTermsAgainstPrimary();
     const terms = getActiveTerms();
-    const rows = buildRowsForTerms(terms);
+    const rows = buildRowsForTerms(terms, preferredSortTermIndex);
     if (rows !== null) {
       renderRows(rows);
     }
