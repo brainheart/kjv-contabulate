@@ -1,52 +1,49 @@
 import unittest
-import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
+
 import build
 
-class ParsePlaySmokeTest(unittest.TestCase):
-    def test_hamlet_parse(self):
-        tei = Path(__file__).parent / 'tei' / 'hamlet_TEIsimple_FolgerShakespeare.xml'
-        self.assertTrue(tei.exists(), 'hamlet TEI must exist for smoke test')
-        scenes, lines_map, token_idx, token2_idx, token3_idx, characters, tokens_char_tmp, tokens_char2_tmp, tokens_char3_tmp, play_row = build.parse_play(tei, 1)
-        # basic shape checks
-        self.assertIsInstance(scenes, list)
-        self.assertGreater(len(scenes), 0)
-        self.assertIsInstance(lines_map, dict)
-        self.assertIsInstance(token_idx, dict)
-        self.assertIsInstance(play_row, dict)
-        self.assertIn('title', play_row)
 
-    def test_henry_v_includes_prologue_epilogue(self):
-        tei = Path(__file__).parent / 'tei' / 'henry-v_TEIsimple_FolgerShakespeare.xml'
-        self.assertTrue(tei.exists(), 'henry-v TEI must exist for prologue test')
-        scenes, lines_map, token_idx, token2_idx, token3_idx, characters, tokens_char_tmp, tokens_char2_tmp, tokens_char3_tmp, play_row = build.parse_play(tei, 1)
-        labels = {s.get("act_label") for s in scenes if s.get("act_label")}
-        self.assertIn("Prologue", labels)
-        self.assertIn("Epilogue", labels)
+class KJVSourceSmokeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = Path(__file__).parent / "osis" / "eng-kjv.osis.xml"
+        cls.root = ET.parse(cls.source).getroot()
 
-    def test_as_you_like_it_includes_epilogue(self):
-        tei = Path(__file__).parent / 'tei' / 'as-you-like-it_TEIsimple_FolgerShakespeare.xml'
-        self.assertTrue(tei.exists(), 'as-you-like-it TEI must exist for epilogue test')
-        scenes, lines_map, token_idx, token2_idx, token3_idx, characters, tokens_char_tmp, tokens_char2_tmp, tokens_char3_tmp, play_row = build.parse_play(tei, 1)
-        labels = {s.get("act_label") for s in scenes if s.get("act_label")}
-        self.assertIn("Epilogue", labels)
+    def test_allowed_books_excludes_apocrypha(self):
+        books = list(build.iter_allowed_books(self.root))
+        self.assertEqual(len(books), 66)
+        abbrs = [book.attrib.get("osisID") for _, book in books]
+        self.assertNotIn("Tob", abbrs)
+        self.assertIn("Gen", abbrs)
+        self.assertIn("Matt", abbrs)
 
-    def test_prose_lb_counts_as_lines(self):
-        xml = '''<TEI><text><body><div type="act"><div type="scene"><sp><speaker>Test</speaker><p>One<lb/>Two<lb/>Three</p></sp></div></div></body></text></TEI>'''
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as tmp:
-            tmp.write(xml)
-            tmp_path = Path(tmp.name)
-        try:
-            scenes, lines_map, token_idx, token2_idx, token3_idx, characters, tokens_char_tmp, tokens_char2_tmp, tokens_char3_tmp, play_row = build.parse_play(tmp_path, 1)
-            self.assertEqual(len(scenes), 1)
-            scene_id = scenes[0]["scene_id"]
-            scene_lines = lines_map.get(scene_id, [])
-            self.assertEqual(len(scene_lines), 3)
-            self.assertEqual(scene_lines[0]["text"], "One")
-            self.assertEqual(scene_lines[1]["text"], "Two")
-            self.assertEqual(scene_lines[2]["text"], "Three")
-        finally:
-            tmp_path.unlink(missing_ok=True)
+    def test_extract_john_3_16(self):
+        john = None
+        for testament, book in build.iter_allowed_books(self.root):
+            if testament == "New Testament" and book.attrib.get("osisID") == "John":
+                john = book
+                break
+        self.assertIsNotNone(john)
+        verses = build.extract_verses(john)
+        by_id = {verse["osis_id"]: verse["text"] for verse in verses}
+        self.assertIn("John.3.16", by_id)
+        self.assertIn("For God so loved the world", by_id["John.3.16"])
 
-if __name__ == '__main__':
+    def test_extract_revelation_handles_split_quote_markup(self):
+        revelation = None
+        for testament, book in build.iter_allowed_books(self.root):
+            if testament == "New Testament" and book.attrib.get("osisID") == "Rev":
+                revelation = book
+                break
+        self.assertIsNotNone(revelation)
+        verses = build.extract_verses(revelation)
+        by_id = {verse["osis_id"]: verse["text"] for verse in verses}
+        self.assertIn("Rev.1.8", by_id)
+        self.assertIn("I am Alpha and Omega", by_id["Rev.1.8"])
+        self.assertIn("the Almighty", by_id["Rev.1.8"])
+
+
+if __name__ == "__main__":
     unittest.main()

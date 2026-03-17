@@ -1,143 +1,155 @@
-"""Sanity checks on build output (docs/data/*.json).
-Run with: python3 -m pytest tests/test_build_output.py -v
-Or:       python3 -m unittest tests.test_build_output -v
-"""
-import unittest
+"""Sanity checks on the generated KJV build output."""
+
 import json
+import unittest
+from collections import Counter
 from pathlib import Path
 
-DATA_DIR = Path(__file__).parent.parent / 'docs' / 'data'
-LINES_DIR = Path(__file__).parent.parent / 'docs' / 'lines'
+DATA_DIR = Path(__file__).parent.parent / "docs" / "data"
+LINES_DIR = Path(__file__).parent.parent / "docs" / "lines"
 
 
 class TestBuildOutputExists(unittest.TestCase):
-    """Verify all expected data files exist."""
-
     EXPECTED_FILES = [
-        'plays.json', 'chunks.json', 'characters.json',
-        'tokens.json', 'tokens2.json', 'tokens3.json',
-        'tokens_char.json', 'tokens_char2.json', 'tokens_char3.json',
+        "plays.json",
+        "chunks.json",
+        "characters.json",
+        "tokens.json",
+        "tokens2.json",
+        "tokens3.json",
+        "tokens_char.json",
+        "tokens_char2.json",
+        "tokens_char3.json",
+        "character_name_filter_config.json",
     ]
 
     def test_all_data_files_exist(self):
-        for f in self.EXPECTED_FILES:
-            self.assertTrue((DATA_DIR / f).exists(), f'{f} must exist in docs/data/')
+        for filename in self.EXPECTED_FILES:
+            self.assertTrue((DATA_DIR / filename).exists(), f"{filename} must exist")
 
     def test_lines_file_exists(self):
-        self.assertTrue((LINES_DIR / 'all_lines.json').exists(), 'all_lines.json must exist')
+        self.assertTrue((LINES_DIR / "all_lines.json").exists(), "all_lines.json must exist")
 
 
-class TestPlays(unittest.TestCase):
+class TestBooks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        with open(DATA_DIR / 'plays.json') as f:
-            cls.plays = json.load(f)
+        cls.books = json.loads((DATA_DIR / "plays.json").read_text())
 
-    def test_37_plays(self):
-        self.assertEqual(len(self.plays), 37)
+    def test_has_66_books(self):
+        self.assertEqual(len(self.books), 66)
 
-    def test_play_has_required_fields(self):
-        required = {'play_id', 'title', 'abbr', 'genre', 'total_words', 'total_lines', 'num_acts', 'num_scenes'}
-        for p in self.plays:
-            self.assertTrue(required.issubset(p.keys()), f"Play {p.get('title', '?')} missing fields: {required - set(p.keys())}")
+    def test_book_has_required_fields(self):
+        required = {
+            "play_id",
+            "title",
+            "abbr",
+            "genre",
+            "total_words",
+            "total_lines",
+            "num_acts",
+            "num_scenes",
+        }
+        for book in self.books:
+            self.assertTrue(required.issubset(book.keys()), f"Missing fields for {book.get('title')}")
 
-    def test_all_plays_have_5_acts(self):
-        for p in self.plays:
-            self.assertEqual(p['num_acts'], 5, f"{p['title']} has {p['num_acts']} acts, expected 5")
+    def test_testament_counts(self):
+        counts = Counter(book["genre"] for book in self.books)
+        self.assertEqual(counts["Old Testament"], 39)
+        self.assertEqual(counts["New Testament"], 27)
 
-    def test_genres_are_valid(self):
-        valid = {'comedy', 'tragedy', 'history', 'romance'}
-        for p in self.plays:
-            self.assertIn(p['genre'], valid, f"{p['title']} has unknown genre '{p['genre']}'")
+    def test_selected_book_shapes(self):
+        by_abbr = {book["abbr"]: book for book in self.books}
+        self.assertEqual(by_abbr["Gen"]["num_acts"], 50)
+        self.assertEqual(by_abbr["Ps"]["num_acts"], 150)
+        self.assertEqual(by_abbr["Matt"]["num_scenes"], 1071)
+        self.assertEqual(by_abbr["Rev"]["num_scenes"], 404)
 
-    def test_unique_play_ids(self):
-        ids = [p['play_id'] for p in self.plays]
-        self.assertEqual(len(ids), len(set(ids)), 'play_ids must be unique')
-
-    def test_unique_abbreviations(self):
-        abbrs = [p['abbr'] for p in self.plays]
-        self.assertEqual(len(abbrs), len(set(abbrs)), 'abbreviations must be unique')
+    def test_unique_ids_and_abbreviations(self):
+        book_ids = [book["play_id"] for book in self.books]
+        abbrs = [book["abbr"] for book in self.books]
+        self.assertEqual(len(book_ids), len(set(book_ids)))
+        self.assertEqual(len(abbrs), len(set(abbrs)))
 
 
-class TestChunks(unittest.TestCase):
+class TestVerses(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        with open(DATA_DIR / 'chunks.json') as f:
-            cls.chunks = json.load(f)
-        with open(DATA_DIR / 'plays.json') as f:
-            cls.play_ids = {p['play_id'] for p in json.load(f)}
+        cls.verses = json.loads((DATA_DIR / "chunks.json").read_text())
+        cls.books = {book["play_id"] for book in json.loads((DATA_DIR / "plays.json").read_text())}
 
-    def test_has_chunks(self):
-        self.assertGreater(len(self.chunks), 700)
+    def test_has_31102_verses(self):
+        self.assertEqual(len(self.verses), 31102)
 
-    def test_chunk_has_required_fields(self):
-        required = {'scene_id', 'play_id', 'act', 'scene', 'total_words'}
-        for c in self.chunks[:10]:
-            self.assertTrue(required.issubset(c.keys()), f"Chunk {c.get('scene_id')} missing fields")
+    def test_first_verse_is_genesis_1_1(self):
+        first = self.verses[0]
+        self.assertEqual(first["canonical_id"], "Gen.1.1")
+        self.assertEqual(first["play_title"], "Genesis")
+        self.assertEqual(first["act"], 1)
+        self.assertEqual(first["scene"], 1)
 
-    def test_all_chunks_reference_valid_plays(self):
-        for c in self.chunks:
-            self.assertIn(c['play_id'], self.play_ids, f"Chunk {c['scene_id']} references unknown play_id {c['play_id']}")
+    def test_verse_has_required_fields(self):
+        required = {"scene_id", "canonical_id", "play_id", "act", "scene", "total_words"}
+        for verse in self.verses[:25]:
+            self.assertTrue(required.issubset(verse.keys()))
+
+    def test_all_verses_reference_valid_books(self):
+        for verse in self.verses:
+            self.assertIn(verse["play_id"], self.books)
 
     def test_unique_scene_ids(self):
-        ids = [c['scene_id'] for c in self.chunks]
-        self.assertEqual(len(ids), len(set(ids)), 'scene_ids must be unique')
+        verse_ids = [verse["scene_id"] for verse in self.verses]
+        self.assertEqual(len(verse_ids), len(set(verse_ids)))
 
 
 class TestTokens(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        with open(DATA_DIR / 'tokens.json') as f:
-            cls.tokens = json.load(f)
-        with open(DATA_DIR / 'tokens2.json') as f:
-            cls.tokens2 = json.load(f)
-        with open(DATA_DIR / 'tokens3.json') as f:
-            cls.tokens3 = json.load(f)
+        cls.tokens = json.loads((DATA_DIR / "tokens.json").read_text())
+        cls.tokens2 = json.loads((DATA_DIR / "tokens2.json").read_text())
+        cls.tokens3 = json.loads((DATA_DIR / "tokens3.json").read_text())
 
-    def test_unigrams_count(self):
-        self.assertGreater(len(self.tokens), 20000)
+    def test_token_index_sizes(self):
+        self.assertGreater(len(self.tokens), 10000)
+        self.assertGreater(len(self.tokens2), 100000)
+        self.assertGreater(len(self.tokens3), 300000)
 
-    def test_bigrams_count(self):
-        self.assertGreater(len(self.tokens2), 200000)
-
-    def test_trigrams_count(self):
-        self.assertGreater(len(self.tokens3), 400000)
-
-    def test_common_words_present(self):
-        for word in ['the', 'love', 'death', 'king', 'lord']:
-            self.assertIn(word, self.tokens, f"'{word}' should be in unigrams")
+    def test_common_bible_terms_exist(self):
+        for word in ["the", "god", "lord", "jesus", "love"]:
+            self.assertIn(word, self.tokens)
 
     def test_posting_format(self):
-        """Each posting should be [scene_id, count]."""
-        for word in ['the', 'love']:
+        for word in ["the", "god"]:
             postings = self.tokens[word]
             self.assertIsInstance(postings, list)
             self.assertGreater(len(postings), 0)
-            for p in postings[:5]:
-                self.assertIsInstance(p, list)
-                self.assertEqual(len(p), 2)
-                self.assertIsInstance(p[0], int)  # scene_id
-                self.assertIsInstance(p[1], int)  # count
+            for posting in postings[:5]:
+                self.assertIsInstance(posting, list)
+                self.assertEqual(len(posting), 2)
+                self.assertIsInstance(posting[0], int)
+                self.assertIsInstance(posting[1], int)
 
 
-class TestCharacters(unittest.TestCase):
+class TestVerseRows(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        with open(DATA_DIR / 'characters.json') as f:
-            cls.chars = json.load(f)
+        cls.rows = json.loads((LINES_DIR / "all_lines.json").read_text())
 
-    def test_has_characters(self):
-        self.assertGreater(len(self.chars), 1000)
+    def test_all_lines_matches_verse_count(self):
+        self.assertEqual(len(self.rows), 31102)
 
-    def test_character_has_required_fields(self):
-        required = {'character_id', 'play_id', 'name', 'total_words_spoken'}
-        for c in self.chars[:10]:
-            self.assertTrue(required.issubset(c.keys()), f"Character {c.get('name')} missing fields")
-
-    def test_hamlet_exists(self):
-        hamlets = [c for c in self.chars if c['name'].upper() == 'HAMLET']
-        self.assertGreater(len(hamlets), 0, 'Hamlet should exist as a character')
+    def test_first_and_last_rows(self):
+        self.assertEqual(self.rows[0]["canonical_id"], "Gen.1.1")
+        self.assertEqual(self.rows[-1]["canonical_id"], "Rev.22.21")
+        self.assertIn("In the beginning", self.rows[0]["text"])
+        self.assertIn("The grace of our Lord Jesus Christ", self.rows[-1]["text"])
 
 
-if __name__ == '__main__':
+class TestCharacterOutputs(unittest.TestCase):
+    def test_characters_are_empty_for_bible_build(self):
+        chars = json.loads((DATA_DIR / "characters.json").read_text())
+        self.assertEqual(chars, [])
+
+
+if __name__ == "__main__":
     unittest.main()

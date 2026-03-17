@@ -1,10 +1,9 @@
-// Play Detail Modal (TF-IDF analysis)
+// Book Detail Modal (TF-IDF analysis)
 // Extracted from index.html — initialized via initPlayDetail()
 
 (function () {
   'use strict';
 
-  const PLAY_COUNT_TOTAL = 37;
   const NAME_TOKEN_RE = /[a-z]+/g;
   const GENERIC_CHARACTER_NAME_TOKENS = new Set([
     'all', 'and', 'both', 'boy', 'captain', 'chorus', 'citizen', 'citizens', 'clown',
@@ -37,6 +36,10 @@
     maxByNNoNames: { 1: 0, 2: 0, 3: 0 }
   };
   let playDetailEls = null;
+
+  function getDocCountTotal() {
+    return playsById && typeof playsById.size === 'number' ? playsById.size : 1;
+  }
 
   function isPlayDetailCell(granVal, key, row) {
     if (!row || row.play_id == null) return false;
@@ -204,7 +207,7 @@
     const overlay = document.createElement('div');
     overlay.className = 'play-detail-overlay';
     overlay.innerHTML = `
-      <div class="play-detail-modal" role="dialog" aria-modal="true" aria-label="Play detail">
+      <div class="play-detail-modal" role="dialog" aria-modal="true" aria-label="Book detail">
         <div class="play-detail-head">
           <button type="button" class="play-detail-close" aria-label="Close">×</button>
           <h3 id="playDetailTitle"></h3>
@@ -222,7 +225,7 @@
             <span class="play-detail-value" id="playDetailValue">0</span>
             <label class="play-detail-toggle" for="playDetailFilterNames">
               <input id="playDetailFilterNames" type="checkbox" checked>
-              Exclude character names
+              Exclude configured names
             </label>
           </div>
           <div class="play-detail-loading" id="playDetailLoading">Computing...</div>
@@ -306,7 +309,7 @@
         const emptyMsg = (threshold > 0)
           ? 'No n-grams at this unusualness threshold.'
           : (playDetailState.excludeCharacterNames
-            ? 'No n-grams remain after excluding character names.'
+            ? 'No n-grams remain after excluding configured names.'
             : 'No n-grams available.');
         tbodyEl.innerHTML = `<tr><td colspan="4" class="muted">${emptyMsg}</td></tr>`;
         return;
@@ -363,7 +366,7 @@
       th.style.cursor = 'pointer';
       const key = th.dataset.key || '';
       if (key === 'tfidf') {
-        th.title = 'TF-IDF = term frequency in this play × inverse document frequency across all plays. IDF = ln(N / df), where N is the number of plays and df is the number of plays containing the term. Higher means more distinctive to this play. Click to sort.';
+        th.title = 'TF-IDF = term frequency in this book × inverse document frequency across all books. IDF = ln(N / df), where N is the number of books and df is the number of books containing the term. Higher means more distinctive to this book. Click to sort.';
         th.setAttribute('aria-label', 'TF-IDF score. Hover for explanation. Click to sort.');
       } else {
         th.title = 'Click to sort';
@@ -422,7 +425,7 @@
       const df = playsSeen.size;
       if (df <= 0) continue;
 
-      const idf = Math.log(PLAY_COUNT_TOTAL / df);
+      const idf = Math.log(getDocCountTotal() / df);
       const tfidf = tf * idf;
       if (tfidf > maxTfIdf) maxTfIdf = tfidf;
       rows.push({ ngram, count: tf, tfidf, containsCharacterName: ngramContainsCharacterName(ngram, playId) });
@@ -488,14 +491,12 @@
     playDetailState.maxByNNoNames = { 1: 0, 2: 0, 3: 0 };
 
     const shape = playShapeById.get(playId) || { scenes: new Set(), acts: new Set() };
-    const year = play.first_performance_year || 'Unknown year';
     const totalWords = play.total_words || 0;
-    const totalLines = play.total_lines || 0;
-    const scenes = shape.scenes.size || 0;
-    const acts = Array.from(shape.acts).filter(a => a >= 1 && a <= 5).length;
+    const totalVerses = play.total_lines || 0;
+    const chapters = shape.acts.size || play.num_acts || 0;
 
-    modal.titleEl.textContent = play.title || play.abbr || 'Unknown play';
-    modal.metaEl.textContent = `${play.genre || 'Unknown genre'} \u00b7 ${year} \u00b7 ${totalWords} words \u00b7 ${totalLines} lines \u00b7 ${scenes} scenes \u00b7 ${acts} acts`;
+    modal.titleEl.textContent = play.title || play.abbr || 'Unknown book';
+    modal.metaEl.textContent = `${play.genre || 'Unknown testament'} \u00b7 ${totalWords} words \u00b7 ${totalVerses} verses \u00b7 ${chapters} chapters`;
     if (modal.filterNamesToggle) modal.filterNamesToggle.checked = true;
     modal.overlay.classList.add('open');
     modal.setLoading('Computing...');

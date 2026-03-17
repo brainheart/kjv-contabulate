@@ -1,7 +1,7 @@
 {
-  "name": "shakespeare-contabulate",
+  "name": "kjv-contabulate",
   "version": "1.0.0",
-  "description": "This repository builds word/phrase counts and character aggregates from TEI XML files (Folger Shakespeare TEIs).",
+  "description": "Static tabular search for the King James Bible, built from OSIS XML into GitHub Pages-friendly JSON indexes.",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -11,15 +11,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/brainheart/shakespeare-contabulate.git"
+    "url": "git+https://github.com/brainheart/kjv-contabulate.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/brainheart/shakespeare-contabulate/issues"
+    "url": "https://github.com/brainheart/kjv-contabulate/issues"
   },
-  "homepage": "https://github.com/brainheart/shakespeare-contabulate#readme",
+  "homepage": "https://github.com/brainheart/kjv-contabulate#readme",
   "devDependencies": {
     "@playwright/test": "^1.58.2"
   }

@@ -1,56 +1,38 @@
-# shakespeare-contabulate
+# kjv-contabulate
 
-Search Shakespeare's works by token, phrase, and regex across plays, acts/scenes, characters, and lines.
+Search the King James Bible by token, phrase, and regex across testaments, books, chapters, verses, and verse text.
 
 This repo contains:
 
-- A Python build pipeline (`build.py`) that reads Folger TEI XML in `tei/` and emits JSON indexes.
-- A static web UI in `docs/` that loads those generated JSON files.
+- A Python build pipeline (`build.py`) that reads the KJV OSIS XML source in `osis/`.
+- A static web UI in `docs/` for GitHub Pages.
 - Python and Playwright tests for data and UI behavior.
 
-## Requirements
+## Corpus
 
-- Python 3.8+
-- Node.js + npm (for Playwright tests)
-- Optional: `lxml` (listed in `requirements.txt`, but `build.py` currently uses `xml.etree.ElementTree`)
+- Source: `osis/eng-kjv.osis.xml`
+- Upstream text: [seven1m/open-bibles](https://github.com/seven1m/open-bibles)
+- Scope: Old Testament + New Testament
+- Default build excludes the apocrypha/deuterocanon section present in the upstream OSIS file.
 
 ## Build Data
 
-Generate/re-generate data files:
+Generate or regenerate the site data:
 
 ```bash
 python3 build.py
 ```
 
-Current `build.py` behavior is fixed to:
+Outputs:
 
-- Input: `tei/*.xml`
-- Output root: `docs/`
-- Data output: `docs/data/*.json`
-- Line output: `docs/lines/*.json`
+- `docs/data/plays.json` for books
+- `docs/data/chunks.json` for verses
+- `docs/data/tokens.json`, `tokens2.json`, `tokens3.json`
+- `docs/lines/all_lines.json` for verse-text search
 
-Generated files include:
-
-- `docs/data/plays.json`
-- `docs/data/chunks.json`
-- `docs/data/characters.json`
-- `docs/data/tokens.json`
-- `docs/data/tokens2.json`
-- `docs/data/tokens3.json`
-- `docs/data/tokens_char.json`
-- `docs/data/tokens_char2.json`
-- `docs/data/tokens_char3.json`
-- `docs/lines/all_lines.json`
-- `docs/lines/<scene_id>.json` (one file per scene)
-
-The build also reads optional metadata from:
-
-- `play_metadata.json`
-- `character_metadata.json`
+`docs/CNAME` is set to `kjv.contabulate.org`.
 
 ## Run Locally
-
-Serve the static site from `docs/`:
 
 ```bash
 python3 -m http.server 8766 -d docs
@@ -60,19 +42,13 @@ Then open [http://localhost:8766](http://localhost:8766).
 
 ## Tests
 
-Run Python tests:
-
-```bash
-python3 -m unittest test_parse_play.py tests.test_build_output -v
-```
-
-or
+Python:
 
 ```bash
 python3 -m pytest tests test_parse_play.py -v
 ```
 
-Run Playwright UI tests:
+Playwright:
 
 ```bash
 npm install
@@ -80,9 +56,7 @@ npx playwright install
 npx playwright test
 ```
 
-The Playwright config auto-starts a local server on port `8766` from `docs/`.
-
 ## Notes
 
-- Generated JSON files under `docs/data/` and `docs/lines/` are committed in this repository.
-- If you want to build a subset corpus, keep only the desired TEI files in `tei/` and run `python3 build.py`.
+- Generated JSON under `docs/data/` and `docs/lines/` is committed output for the static site.
+- The frontend keeps the original Contabulate interaction model where practical, but remaps the hierarchy to testament/book/chapter/verse.
