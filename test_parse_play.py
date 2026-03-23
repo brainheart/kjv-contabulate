@@ -44,6 +44,12 @@ class KJVSourceSmokeTest(unittest.TestCase):
         self.assertIn("I am Alpha and Omega", by_id["Rev.1.8"])
         self.assertIn("the Almighty", by_id["Rev.1.8"])
 
+    def test_format_location_zero_pads_for_sorting(self):
+        self.assertEqual(build.format_location(1, "Gen"), "01.Gen")
+        self.assertEqual(build.format_location(1, "Gen", 7), "01.Gen.007")
+        self.assertEqual(build.format_location(1, "Gen", 7, 12), "01.Gen.007.012")
+        self.assertEqual(build.format_location(19, "Ps", 119, 105), "19.Ps.119.105")
+
 
 if __name__ == "__main__":
     unittest.main()

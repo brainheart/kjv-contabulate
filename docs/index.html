@@ -481,6 +481,9 @@
   let segmentsPageSize = 50;
   let segmentsAllRows = [];
   let lastSegmentsBaseRows = [];
+  function normalizeSegmentsColumnKey(key) {
+    return key === 'ref_code' ? 'location' : key;
+  }
   // Deep link: human-readable query params (fallback to legacy base64 `state`)
   function buildQueryParamsFromState() {
     const p = new URLSearchParams();
@@ -740,20 +743,20 @@
           const restoredExtras = sp.has('qt') ? decodeExtrasParam(sp.get('qt')) : [];
           setActiveTermsFromRestoredState(sp.has('q') ? q.value : '', restoredExtras, true);
         }
-        if (sp.has('sk')) sortKey = sp.get('sk');
+        if (sp.has('sk')) sortKey = normalizeSegmentsColumnKey(sp.get('sk'));
         if (sp.has('sd')) sortDir = sp.get('sd');
         if (sp.has('co')) {
-          segmentsColumnOrder = sp.get('co').split(',').map(s => s.trim()).filter(Boolean);
+          segmentsColumnOrder = sp.get('co').split(',').map(s => normalizeSegmentsColumnKey(s.trim())).filter(Boolean);
         }
         // Clear filters only for current granularity
         getSegmentsFiltersMap().clear();
         for (const [k, v] of sp.entries()) {
           if (k.startsWith('s_fn_')) {
-            const key = k.slice(5);
+            const key = normalizeSegmentsColumnKey(k.slice(5));
             const [min, max] = (v || '').split('~');
             getSegmentsFiltersMap().set(key, { type:'number', min, max });
           } else if (k.startsWith('s_ft_')) {
-            const key = k.slice(5);
+            const key = normalizeSegmentsColumnKey(k.slice(5));
             getSegmentsFiltersMap().set(key, { type:'text', pattern: v || '' });
           }
         }
@@ -802,13 +805,13 @@
         extraTerms = st.segments.extraTerms.filter(Boolean);
       }
         setActiveTermsFromRestoredState(st.segments.q != null ? q.value : '', extraTerms, true);
-        if (st.segments.sortKey) sortKey = st.segments.sortKey;
+        if (st.segments.sortKey) sortKey = normalizeSegmentsColumnKey(st.segments.sortKey);
         if (st.segments.sortDir) sortDir = st.segments.sortDir;
         // Clear and set filters only for current granularity
         getSegmentsFiltersMap().clear();
         if (st.segments.filters) {
           const m = arrayToMap(st.segments.filters);
-          for (const [k,v] of m.entries()) getSegmentsFiltersMap().set(k,v);
+          for (const [k,v] of m.entries()) getSegmentsFiltersMap().set(normalizeSegmentsColumnKey(k), v);
         }
       }
       // Lines
@@ -1172,6 +1175,22 @@
       const key = parts.slice(0, n).join(' ');
       return idx[key] || [];
     }
+    function padLocationPart(value) {
+      const num = Number(value);
+      return String(Number.isFinite(num) ? num : 0).padStart(3, '0');
+    }
+    function getBookLocation(play) {
+      if (play && play.location) return String(play.location);
+      const bookNum = String(Number(play && play.play_id) || 0).padStart(2, '0');
+      const abbr = String((play && (play.abbr || play.play_abbr)) || '').trim() || `BOOK${bookNum}`;
+      return `${bookNum}.${abbr}`;
+    }
+    function getChapterLocation(play, act) {
+      return `${getBookLocation(play)}.${padLocationPart(act)}`;
+    }
+    function getVerseLocation(play, act, scene) {
+      return `${getChapterLocation(play, act)}.${padLocationPart(scene)}`;
+    }
 
     const genreTotals = new Map();
     const genrePlayCounts = new Map();
@@ -1188,7 +1207,8 @@
           ensureRow(m.scene_id, () => {
             const totalWords = m.total_words || 0;
             const ngramCount = Math.max(0, totalWords - (n - 1));
-            return { id: m.canonical_id, play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id: m.scene_id, act_label: m.act_label, scene_label: m.scene_label };
+            const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
+            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id: m.scene_id, act_label: m.act_label, scene_label: m.scene_label };
           });
         });
       } else if (granVal === 'act') {
@@ -1200,7 +1220,7 @@
           if (!play) continue;
           ensureRow(k, () => {
             const ngramCount = Math.max(0, total_words - (n - 1));
-            return { id: `${play.abbr}.${actNum}`, play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
           });
         }
       } else if (granVal === 'play') {
@@ -1208,7 +1228,7 @@
           ensureRow(p.play_id, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = Math.max(0, total_words - (n - 1));
-            return { play_id:p.play_id, title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return { play_id:p.play_id, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
           });
         });
       } else if (granVal === 'genre') {
@@ -1254,10 +1274,12 @@
       for (const ln of allLines) {
         const clean = (ln.text || '').toString().replace(/\s+/g, ' ').trim();
         let hasTerm = false;
+        const play = playsById.get(ln.play_id) || { play_id: ln.play_id };
         const row = {
           id: ln.canonical_id,
+          location: ln.location || getVerseLocation(play, ln.act, ln.scene),
           play_id: ln.play_id,
-          play_title: (playsById.get(ln.play_id) || {}).title || '',
+          play_title: play.title || '',
           act: ln.act,
           scene: ln.scene,
           act_label: ln.act_label,
@@ -1297,7 +1319,7 @@
       }
 
       const baseCols = [
-        { key: 'id', label: 'Reference', defaultDir: 'asc', type: 'text' },
+        { key: 'location', label: 'Location', defaultDir: 'asc', type: 'text' },
         { key: 'play_title', label: 'Book', defaultDir: 'asc', type: 'text' },
         { key: 'act', label: 'Chapter', type: 'number' },
         { key: 'scene', label: 'Verse', type: 'number' }
@@ -1307,14 +1329,16 @@
       baseCols.push({ key: 'line', label: 'Verse Text', type: 'text' });
       setHeaders(baseCols);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
       }
       return finalizeRows(true, false);
     }
 
     if (granVal==='scene'){
       const baseCols = [
-        {key:'id', label:'Reference', defaultDir:'asc', type:'text'},
+        {key:'location', label:'Location', defaultDir:'asc', type:'text'},
         {key:'play_title', label:'Book', defaultDir:'asc', type:'text'},
         {key:'act', label:'Chapter', type:'number'},
         {key:'scene', label:'Verse', type:'number'},
@@ -1327,7 +1351,8 @@
           const row = ensureRow(scene_id, () => {
             const totalWords = m.total_words || 0;
             const ngramCount = Math.max(0, totalWords - (n - 1));
-            return { id: m.canonical_id, play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id };
+            const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
+            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id };
           });
           const d = denomFor(n,'scene',m);
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1337,14 +1362,16 @@
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
       }
       return finalizeRows(includeCounts, includePct);
     }
 
     if (granVal==='act'){
       const baseCols = [
-        {key:'id', label:'Reference', defaultDir:'asc', type:'text'},
+        {key:'location', label:'Location', defaultDir:'asc', type:'text'},
         {key:'play_title', label:'Book', defaultDir:'asc', type:'text'},
         {key:'act', label:'Chapter', type:'number'},
         {key:'ngram_count', label: n===1 ? 'Word count' : n===2 ? 'Bigram count' : 'Trigram count', type:'number'}
@@ -1366,7 +1393,7 @@
           const row = ensureRow(k, () => {
             const total_words = actTotals.get(k) || 0;
             const ngramCount = Math.max(0, total_words - (n - 1));
-            return { id: `${play.abbr}.${actNum}`, play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
           });
           const d = denomFor(n,'act',{play_id:pid,act:actNum});
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1376,13 +1403,16 @@
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
       }
       return finalizeRows(includeCounts, includePct);
     }
 
     if (granVal==='play'){
       const baseCols = [
+        {key:'location', label:'Location', defaultDir:'asc', type:'text'},
         {key:'title', label:'Book', defaultDir:'asc', type:'text'},
         {key:'genre', label:'Testament', defaultDir:'asc', type:'text'},
         {key:'num_chapters', label:'# chapters', type:'number'},
@@ -1402,7 +1432,7 @@
           const row = ensureRow(pid, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = Math.max(0, total_words - (n - 1));
-            return { play_id:pid, title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return { play_id:pid, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
           });
           const d = denomFor(n,'play',{play_id:pid});
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1412,7 +1442,9 @@
       const termCols = buildTermColumns(includeCounts, includePct);
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
       }
       return finalizeRows(includeCounts, includePct);
     }

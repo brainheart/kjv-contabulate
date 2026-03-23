@@ -127,6 +127,15 @@ def clean_dir_json_files(path):
         json_path.unlink()
 
 
+def format_location(book_id, book_abbr, chapter=None, verse=None):
+    location = f"{int(book_id):02d}.{book_abbr}"
+    if chapter is not None:
+        location = f"{location}.{int(chapter):03d}"
+    if verse is not None:
+        location = f"{location}.{int(verse):03d}"
+    return location
+
+
 def build(source_path: Path, out_dir: Path):
     tree = ET.parse(source_path)
     root = tree.getroot()
@@ -161,6 +170,7 @@ def build(source_path: Path, out_dir: Path):
             chapter_num = int(verse["chapter"] or 0)
             verse_num = int(verse["verse"] or 0)
             canonical_id = verse["osis_id"] or f"{book_abbr}.{chapter_num}.{verse_num}"
+            location = format_location(book_id, book_abbr, chapter_num, verse_num)
             unique_words = len(set(toks))
             total_words = len(toks)
             book_total_words += total_words
@@ -168,6 +178,7 @@ def build(source_path: Path, out_dir: Path):
             chunk_row = {
                 "scene_id": verse_id,
                 "canonical_id": canonical_id,
+                "location": location,
                 "play_id": book_id,
                 "play_title": book_title,
                 "play_abbr": book_abbr,
@@ -186,6 +197,7 @@ def build(source_path: Path, out_dir: Path):
                 {
                     "play_id": book_id,
                     "canonical_id": canonical_id,
+                    "location": location,
                     "act": chapter_num,
                     "scene": verse_num,
                     "line_num": verse_id,
@@ -216,6 +228,7 @@ def build(source_path: Path, out_dir: Path):
         plays.append(
             {
                 "play_id": book_id,
+                "location": format_location(book_id, book_abbr),
                 "title": book_title,
                 "abbr": book_abbr,
                 "genre": testament,

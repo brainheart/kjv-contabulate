@@ -42,6 +42,7 @@ class TestBooks(unittest.TestCase):
     def test_book_has_required_fields(self):
         required = {
             "play_id",
+            "location",
             "title",
             "abbr",
             "genre",
@@ -71,6 +72,11 @@ class TestBooks(unittest.TestCase):
         self.assertEqual(len(book_ids), len(set(book_ids)))
         self.assertEqual(len(abbrs), len(set(abbrs)))
 
+    def test_locations_follow_canonical_order(self):
+        self.assertEqual(self.books[0]["location"], "01.Gen")
+        self.assertEqual(self.books[1]["location"], "02.Exod")
+        self.assertEqual(self.books[-1]["location"], "66.Rev")
+
 
 class TestVerses(unittest.TestCase):
     @classmethod
@@ -84,12 +90,13 @@ class TestVerses(unittest.TestCase):
     def test_first_verse_is_genesis_1_1(self):
         first = self.verses[0]
         self.assertEqual(first["canonical_id"], "Gen.1.1")
+        self.assertEqual(first["location"], "01.Gen.001.001")
         self.assertEqual(first["play_title"], "Genesis")
         self.assertEqual(first["act"], 1)
         self.assertEqual(first["scene"], 1)
 
     def test_verse_has_required_fields(self):
-        required = {"scene_id", "canonical_id", "play_id", "act", "scene", "total_words"}
+        required = {"scene_id", "canonical_id", "location", "play_id", "act", "scene", "total_words"}
         for verse in self.verses[:25]:
             self.assertTrue(required.issubset(verse.keys()))
 
@@ -140,7 +147,9 @@ class TestVerseRows(unittest.TestCase):
 
     def test_first_and_last_rows(self):
         self.assertEqual(self.rows[0]["canonical_id"], "Gen.1.1")
+        self.assertEqual(self.rows[0]["location"], "01.Gen.001.001")
         self.assertEqual(self.rows[-1]["canonical_id"], "Rev.22.21")
+        self.assertEqual(self.rows[-1]["location"], "66.Rev.022.021")
         self.assertIn("In the beginning", self.rows[0]["text"])
         self.assertIn("The grace of our Lord Jesus Christ", self.rows[-1]["text"])
 

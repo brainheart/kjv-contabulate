@@ -28,6 +28,28 @@ test.describe('Page Load', () => {
     await expect(page.locator('.tab-btn')).toHaveCount(2);
     await expect(page.locator('.tab-btn[data-tab="lines"]')).toContainText('Rows are Verses');
   });
+
+  test('defaults to canonical book order on open', async ({ page }) => {
+    await page.goto('/');
+    await waitForDataLoaded(page);
+    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
+
+    await expect(page.locator('#gran')).toHaveValue('play');
+    await expect(page.locator('#results thead th.sorted-asc')).toContainText('Location');
+
+    const firstRows = await page.locator('#results tbody tr').evaluateAll((trs) =>
+      trs.slice(0, 3).map((tr) =>
+        Array.from(tr.querySelectorAll('td'))
+          .slice(0, 2)
+          .map((td) => (td.textContent || '').trim())
+      )
+    );
+    expect(firstRows).toEqual([
+      ['01.Gen', 'Genesis'],
+      ['02.Exod', 'Exodus'],
+      ['03.Lev', 'Leviticus'],
+    ]);
+  });
 });
 
 test.describe('Segments Search', () => {
@@ -45,6 +67,7 @@ test.describe('Segments Search', () => {
   test('book granularity shows Bible-specific columns', async ({ page }) => {
     await search(page, 'light', { gran: 'play' });
     const texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Location'))).toBeTruthy();
     expect(texts.some(t => t.includes('Book'))).toBeTruthy();
     expect(texts.some(t => t.includes('Testament'))).toBeTruthy();
     expect(texts.some(t => t.includes('# chapters'))).toBeTruthy();
@@ -52,10 +75,31 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.trim() === 'Reference')).toBeFalsy();
   });
 
-  test('verse granularity shows reference columns', async ({ page }) => {
+  test('location column sorts books in canonical order', async ({ page }) => {
+    await search(page, 'the', { gran: 'play' });
+    await page.selectOption('#segmentsPageSize', '100');
+
+    await page.locator('#results thead th').filter({ hasText: 'Location' }).first().click();
+    await expect(page.locator('#results thead th.sorted-asc')).toContainText('Location');
+
+    const firstRows = await page.locator('#results tbody tr').evaluateAll((trs) =>
+      trs.slice(0, 3).map((tr) =>
+        Array.from(tr.querySelectorAll('td'))
+          .slice(0, 2)
+          .map((td) => (td.textContent || '').trim())
+      )
+    );
+    expect(firstRows).toEqual([
+      ['01.Gen', 'Genesis'],
+      ['02.Exod', 'Exodus'],
+      ['03.Lev', 'Leviticus'],
+    ]);
+  });
+
+  test('verse granularity shows location and verse columns', async ({ page }) => {
     await search(page, 'light', { gran: 'scene' });
     const texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Reference'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Location'))).toBeTruthy();
     expect(texts.some(t => t.includes('Book'))).toBeTruthy();
     expect(texts.some(t => t.includes('Chapter'))).toBeTruthy();
     expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
@@ -155,7 +199,7 @@ test.describe('Deep Links', () => {
     await expect(page.locator('#q')).toHaveValue('light');
     await expect(page.locator('#results thead th.sorted-asc')).toContainText('Book');
 
-    const firstCellText = (await page.locator('#results tbody tr:first-child td:first-child').textContent() || '').trim();
-    expect(firstCellText).toMatch(/^1 /);
+    const firstBookCellText = (await page.locator('#results tbody tr:first-child td:nth-child(2)').textContent() || '').trim();
+    expect(firstBookCellText).toMatch(/^1 /);
   });
 });
