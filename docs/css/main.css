@@ -264,6 +264,15 @@ td.ranked-cell {
   align-items: center;
   flex-wrap: wrap;
 }
+.commentator-column-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.commentator-column-option {
+  white-space: nowrap;
+}
 .deep-link-wrap {
   margin-top: 0.25rem;
   font-size: 0.95rem;

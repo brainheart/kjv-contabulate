@@ -9,8 +9,10 @@ async function waitForDataLoaded(page) {
 
 async function search(page, query, { gran = 'play', ngramMode = '1', matchMode = 'exact' } = {}) {
   await page.selectOption('#gran', gran);
-  await page.selectOption('#ngramMode', ngramMode);
   await page.selectOption('#matchMode', matchMode);
+  if (matchMode === 'regex') {
+    await page.selectOption('#ngramMode', ngramMode);
+  }
   await page.fill('#q', query);
   await page.press('#q', 'Enter');
   await page.waitForSelector('#results tbody tr', { timeout: 10000 });
@@ -20,6 +22,7 @@ test.describe('Page Load', () => {
   test('loads and shows the KJV title', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveTitle(/King James Bible/);
+    await expect(page.locator('a[href="https://github.com/HistoricalChristianFaith/Commentaries-Database"]').first()).toBeVisible();
   });
 
   test('shows both contexts and verses tabs', async ({ page }) => {
@@ -72,7 +75,31 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.includes('Testament'))).toBeTruthy();
     expect(texts.some(t => t.includes('# chapters'))).toBeTruthy();
     expect(texts.some(t => t.includes('# verses'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Commentary Interest'))).toBeTruthy();
     expect(texts.some(t => t.trim() === 'Reference')).toBeFalsy();
+  });
+
+  test('can select and deselect individual commentator columns', async ({ page }) => {
+    await search(page, 'light', { gran: 'play' });
+    let texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Augustine'))).toBeFalsy();
+
+    await page.locator('#segmentsTab details summary').click();
+    await page.locator('#commentatorColumnControls input[data-commentator-key="augustine"]').check();
+
+    texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Augustine'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Aquinas'))).toBeFalsy();
+
+    await page.locator('#commentatorColumnControls input[data-commentator-key="aquinas"]').check();
+    texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Augustine'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Aquinas'))).toBeTruthy();
+
+    await page.locator('#commentatorColumnControls input[data-commentator-key="augustine"]').uncheck();
+    texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Augustine'))).toBeFalsy();
+    expect(texts.some(t => t.includes('Aquinas'))).toBeTruthy();
   });
 
   test('location column sorts books in canonical order', async ({ page }) => {
@@ -136,14 +163,13 @@ test.describe('Segments Search', () => {
     await expect(page.locator('#results tbody td .hit')).toHaveCount(0);
   });
 
-  test('verse-text granularity disables percentage modes', async ({ page }) => {
-    await page.selectOption('#termDisplayMode', 'pct');
-    await page.selectOption('#gran', 'line');
+  test('verse-text granularity shows counts even when percent display is selected', async ({ page }) => {
+    await page.selectOption('#newTermDisplay', 'pct');
+    await search(page, 'light', { gran: 'line' });
 
-    await expect(page.locator('#termDisplayMode')).toHaveValue('counts');
-    await expect(page.locator('#termDisplayMode option[value="both"]')).toBeDisabled();
-    await expect(page.locator('#termDisplayMode option[value="pct"]')).toBeDisabled();
-    await expect(page.locator('#termDisplayMode')).toHaveAttribute('title', 'Verse-text rows show hits only.');
+    const texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('# "light"'))).toBeTruthy();
+    expect(texts.some(t => t.includes('% "light"'))).toBeFalsy();
   });
 
   test('bigram and regex search both work', async ({ page }) => {
@@ -160,7 +186,11 @@ test.describe('Verses Tab', () => {
     await page.goto('/');
     await waitForDataLoaded(page);
     await search(page, 'light', { gran: 'play' });
-    await page.evaluate(() => { document.querySelector('.tabs').style.display = 'flex'; });
+    await page.evaluate(() => {
+      const tabs = document.querySelector('.tabs');
+      tabs.classList.remove('is-hidden');
+      tabs.style.display = 'flex';
+    });
     await page.click('.tab-btn[data-tab="lines"]');
   });
 
@@ -201,5 +231,21 @@ test.describe('Deep Links', () => {
 
     const firstBookCellText = (await page.locator('#results tbody tr:first-child td:nth-child(2)').textContent() || '').trim();
     expect(firstBookCellText).toMatch(/^1 /);
+  });
+
+  test('restores selected commentator columns from URL params', async ({ page }) => {
+    await page.goto('/?q=light&nm=1&gran=play&mm=exact&commentators=augustine,aquinas');
+    await waitForDataLoaded(page);
+    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
+
+    const texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Augustine'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Aquinas'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Luther'))).toBeFalsy();
+
+    await page.locator('#segmentsTab details summary').click();
+    await expect(page.locator('#commentatorColumnControls input[data-commentator-key="augustine"]')).toBeChecked();
+    await expect(page.locator('#commentatorColumnControls input[data-commentator-key="aquinas"]')).toBeChecked();
+    await expect(page.locator('#commentatorColumnControls input[data-commentator-key="luther"]')).not.toBeChecked();
   });
 });

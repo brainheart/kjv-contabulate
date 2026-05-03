@@ -17,6 +17,7 @@ class TestBuildOutputExists(unittest.TestCase):
         "tokens.json",
         "tokens2.json",
         "tokens3.json",
+        "commentary_interest.json",
         "tokens_char.json",
         "tokens_char2.json",
         "tokens_char3.json",
@@ -50,6 +51,7 @@ class TestBooks(unittest.TestCase):
             "total_lines",
             "num_acts",
             "num_scenes",
+            "commentary_interest",
         }
         for book in self.books:
             self.assertTrue(required.issubset(book.keys()), f"Missing fields for {book.get('title')}")
@@ -96,7 +98,7 @@ class TestVerses(unittest.TestCase):
         self.assertEqual(first["scene"], 1)
 
     def test_verse_has_required_fields(self):
-        required = {"scene_id", "canonical_id", "location", "play_id", "act", "scene", "total_words"}
+        required = {"scene_id", "canonical_id", "location", "play_id", "act", "scene", "total_words", "commentary_interest"}
         for verse in self.verses[:25]:
             self.assertTrue(required.issubset(verse.keys()))
 
@@ -107,6 +109,11 @@ class TestVerses(unittest.TestCase):
     def test_unique_scene_ids(self):
         verse_ids = [verse["scene_id"] for verse in self.verses]
         self.assertEqual(len(verse_ids), len(set(verse_ids)))
+
+    def test_commentary_interest_counts_known_hotspot(self):
+        by_id = {verse["canonical_id"]: verse for verse in self.verses}
+        self.assertGreater(by_id["John.1.1"]["commentary_interest"], 0)
+        self.assertGreater(by_id["John.1.1"]["commentary_augustine"], 0)
 
 
 class TestTokens(unittest.TestCase):

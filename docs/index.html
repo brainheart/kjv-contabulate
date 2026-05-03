@@ -22,7 +22,7 @@
     </div>
   </div>
   <h1><a href="https://contabulate.org/">Contabulate</a>: 📖 King James Bible Tabular Search</h1>
-  <p class="muted">Search words, bigrams, or trigrams across testaments, books, chapters, verses, and verse text. Use regex (e.g., <code>^light$</code>) or plain text. Source text courtesy of the <a href="https://github.com/seven1m/open-bibles" target="_blank">Open Bibles OSIS KJV</a>.</p>
+  <p class="muted">Search words, bigrams, or trigrams across testaments, books, chapters, verses, and verse text. Use regex (e.g., <code>^light$</code>) or plain text. Source text courtesy of the <a href="https://github.com/seven1m/open-bibles" target="_blank" rel="noopener">Open Bibles OSIS KJV</a>. Commentary interest counts are derived from the <a href="https://github.com/HistoricalChristianFaith/Commentaries-Database" target="_blank" rel="noopener">HistoricalChristianFaith Commentaries Database</a>.</p>
 
   <div class="tabs is-hidden">
     <button class="tab-btn active" data-tab="segments">Rows are Contexts</button>
@@ -43,6 +43,7 @@
           <option value="genre">Testament</option>
           <option value="play">Book</option>
           <option value="act">Chapter</option>
+          <option value="scene">Verse</option>
           <option value="line" selected>Verse Text</option>
         </select>
         <span class="label-strong">matching</span>
@@ -69,6 +70,10 @@
         <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
         <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching verse text</label>
         <label><input type="checkbox" id="showZeroRows"> Show zero-hit rows</label>
+        <div id="commentatorColumnControls" class="commentator-column-controls" role="group" aria-label="Individual commentator columns">
+          <span class="label-strong">Commentator columns:</span>
+          <span class="muted">Loading...</span>
+        </div>
         <button id="downloadSegmentsCsv" class="download-btn" type="button">Download CSV</button>
         <div class="color-scale-options">
           <label>Palette:
@@ -214,6 +219,7 @@
   const theadRow = document.getElementById('headRow');
   const tbody = document.querySelector('#results tbody');
   const showZeroRowsToggle = document.getElementById('showZeroRows');
+  const commentatorColumnControls = document.getElementById('commentatorColumnControls');
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termWarning = document.getElementById('termWarning');
   const qPlaceholderText = 'Type a search term here, then hit "Add Column"';
@@ -226,6 +232,7 @@
   let addColumnPromptStepIndex = 0;
   let extraTerms = [];
   let showZeroRows = false;
+  let selectedCommentatorColumns = new Set();
   const resultsTable = document.getElementById('results');
   let rankHintBubbleEl = null;
   let rankHintBubbleTimer = null;
@@ -528,6 +535,8 @@
     // Display
     p.set('cs', colorScaleState.colorScaleEnabled ? '1' : '0');
     p.set('zr', showZeroRows ? '1' : '0');
+    const selectedCommentatorsParam = getSelectedCommentatorKeys().join(',');
+    if (selectedCommentatorsParam) p.set('commentators', selectedCommentatorsParam);
     // palette and steps omitted for cleaner URLs
     p.set('hl', colorScaleState.highlightEnabled ? '1' : '0');
     // Segments
@@ -668,10 +677,10 @@
     return res.json();
   }
 
-  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null;
+  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null, commentaryInterestConfig=null;
   setLoadingState(true, "Loading data...");
   try {
-    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig] = await Promise.all([
+    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig, commentaryInterestConfig] = await Promise.all([
       loadJSON('data/chunks.json'),
       loadJSON('data/tokens.json'),
       loadJSON('data/tokens2.json'),
@@ -682,6 +691,7 @@
       loadJSON('data/tokens_char2.json'),
       loadJSON('data/tokens_char3.json'),
       loadJSON('data/character_name_filter_config.json').catch(() => null),
+      loadJSON('data/commentary_interest.json').catch(() => null),
     ]);
   } catch(e) {
     setLoadingState(true, 'Unable to load data. Please reload the page.');
@@ -725,13 +735,129 @@
 
   renderExtraTerms();
 
+  function getCommentatorConfig() {
+    const metadata = commentaryInterestConfig && commentaryInterestConfig.metadata;
+    const commentators = metadata && Array.isArray(metadata.commentators) ? metadata.commentators : [];
+    return commentators
+      .map(item => ({
+        key: String(item && item.key || '').trim(),
+        label: String(item && (item.label || item.name || item.key) || '').trim()
+      }))
+      .filter(item => item.key && item.label);
+  }
+  function getSelectedCommentatorKeys() {
+    return getCommentatorConfig()
+      .filter(item => selectedCommentatorColumns.has(item.key))
+      .map(item => item.key);
+  }
+  function getSelectedCommentatorConfig() {
+    const selected = new Set(getSelectedCommentatorKeys());
+    return getCommentatorConfig().filter(item => selected.has(item.key));
+  }
+  function setSelectedCommentatorKeys(keys) {
+    const allowed = new Set(getCommentatorConfig().map(item => item.key));
+    selectedCommentatorColumns = new Set(
+      (keys || [])
+        .map(key => String(key || '').trim())
+        .filter(key => allowed.has(key))
+    );
+    syncCommentatorColumnControls();
+  }
+  function decodeCommentatorsParam(raw) {
+    return String(raw || '')
+      .split(',')
+      .map(key => key.trim())
+      .filter(Boolean);
+  }
+  function syncCommentatorColumnControls() {
+    if (!commentatorColumnControls) return;
+    const config = getCommentatorConfig();
+    commentatorColumnControls.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'label-strong';
+    label.textContent = 'Commentator columns:';
+    commentatorColumnControls.appendChild(label);
+    if (!config.length) {
+      const empty = document.createElement('span');
+      empty.className = 'muted';
+      empty.textContent = 'None available';
+      commentatorColumnControls.appendChild(empty);
+      return;
+    }
+    const allButton = document.createElement('button');
+    allButton.type = 'button';
+    allButton.className = 'link-btn link-btn-no-padding';
+    allButton.dataset.commentatorAction = 'all';
+    allButton.textContent = 'All';
+    commentatorColumnControls.appendChild(allButton);
+    const noneButton = document.createElement('button');
+    noneButton.type = 'button';
+    noneButton.className = 'link-btn link-btn-no-padding';
+    noneButton.dataset.commentatorAction = 'none';
+    noneButton.textContent = 'None';
+    commentatorColumnControls.appendChild(noneButton);
+    config.forEach(item => {
+      const itemLabel = document.createElement('label');
+      itemLabel.className = 'commentator-column-option';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.dataset.commentatorKey = item.key;
+      input.checked = selectedCommentatorColumns.has(item.key);
+      itemLabel.appendChild(input);
+      itemLabel.appendChild(document.createTextNode(` ${item.label}`));
+      commentatorColumnControls.appendChild(itemLabel);
+    });
+  }
+  function getCommentaryFieldKeys(includeIndividuals = true) {
+    const keys = ['commentary_interest'];
+    if (includeIndividuals) {
+      getCommentatorConfig().forEach(item => keys.push(`commentary_${item.key}`));
+    }
+    return keys;
+  }
+  function copyCommentaryFields(source, includeIndividuals = true) {
+    const out = {};
+    getCommentaryFieldKeys(includeIndividuals).forEach(key => {
+      const value = Number(source && source[key]);
+      out[key] = Number.isFinite(value) ? value : 0;
+    });
+    return out;
+  }
+  function addCommentaryFields(target, source, includeIndividuals = true) {
+    Object.assign(target, copyCommentaryFields(source, includeIndividuals));
+    return target;
+  }
+  function getCommentaryColumns() {
+    const cols = [
+      { key: 'commentary_interest', label: 'Commentary Interest', type: 'number', defaultDir: 'desc' }
+    ];
+    getSelectedCommentatorConfig().forEach(item => {
+      cols.push({ key: `commentary_${item.key}`, label: item.label, type: 'number', defaultDir: 'desc' });
+    });
+    return cols;
+  }
+  syncCommentatorColumnControls();
+
   // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
   const actTotals = new Map();
   const playTotals = new Map();
+  const actCommentaryTotals = new Map();
+  const genreCommentaryTotals = new Map();
   for (const r of chunks) {
     const k = `${r.play_id}:${r.act}`;
     actTotals.set(k, (actTotals.get(k)||0) + (r.total_words||0));
     playTotals.set(r.play_id, (playTotals.get(r.play_id)||0) + (r.total_words||0));
+    const actCommentary = actCommentaryTotals.get(k) || copyCommentaryFields(null, true);
+    getCommentaryFieldKeys(true).forEach(key => {
+      actCommentary[key] = (actCommentary[key] || 0) + (Number(r[key]) || 0);
+    });
+    actCommentaryTotals.set(k, actCommentary);
+    const genre = r.genre || 'unknown';
+    const genreCommentary = genreCommentaryTotals.get(genre) || copyCommentaryFields(null, true);
+    getCommentaryFieldKeys(true).forEach(key => {
+      genreCommentary[key] = (genreCommentary[key] || 0) + (Number(r[key]) || 0);
+    });
+    genreCommentaryTotals.set(genre, genreCommentary);
   }
 
   // Apply state from deep link if present
@@ -756,6 +882,18 @@
         if (sp.has('zr')) {
           showZeroRows = sp.get('zr') === '1';
           if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+        }
+        if (sp.has('commentators')) {
+          setSelectedCommentatorKeys(decodeCommentatorsParam(sp.get('commentators')));
+        } else if (sp.has('ic')) {
+          const legacyValue = sp.get('ic');
+          if (legacyValue === '1') {
+            setSelectedCommentatorKeys(getCommentatorConfig().map(item => item.key));
+          } else if (legacyValue && legacyValue !== '0') {
+            setSelectedCommentatorKeys(decodeCommentatorsParam(legacyValue));
+          } else {
+            setSelectedCommentatorKeys([]);
+          }
         }
         if (sp.has('ts')) {
           setActiveTermsFromRestoredState(null, decodeTermSpecsParam(sp.get('ts')), true);
@@ -816,6 +954,11 @@
       if (typeof st.segments.showZeroRows === 'boolean') {
         showZeroRows = st.segments.showZeroRows;
         if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+      }
+      if (Array.isArray(st.segments.commentators)) {
+        setSelectedCommentatorKeys(st.segments.commentators);
+      } else if (typeof st.segments.showCommentatorColumns === 'boolean') {
+        setSelectedCommentatorKeys(st.segments.showCommentatorColumns ? getCommentatorConfig().map(item => item.key) : []);
       }
       if (Array.isArray(st.segments.extraTerms)) {
         extraTerms = st.segments.extraTerms.filter(Boolean);
@@ -1242,7 +1385,7 @@
             const totalWords = m.total_words || 0;
             const ngramCount = getRowNgramCount(totalWords);
             const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
-            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id: m.scene_id, act_label: m.act_label, scene_label: m.scene_label };
+            return addCommentaryFields({ id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id: m.scene_id, act_label: m.act_label, scene_label: m.scene_label }, m);
           });
         });
       } else if (granVal === 'act') {
@@ -1254,7 +1397,7 @@
           if (!play) continue;
           ensureRow(k, () => {
             const ngramCount = getRowNgramCount(total_words);
-            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount }, actCommentaryTotals.get(k));
           });
         }
       } else if (granVal === 'play') {
@@ -1262,14 +1405,14 @@
           ensureRow(p.play_id, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = getRowNgramCount(total_words);
-            return { play_id:p.play_id, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ play_id:p.play_id, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount }, p);
           });
         });
       } else if (granVal === 'genre') {
         for (const [genre, totalWords] of genreTotals.entries()) {
           ensureRow(genre, () => {
             const ngramCount = getRowNgramCount(totalWords);
-            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
+            return addCommentaryFields({ genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount }, genreCommentaryTotals.get(genre));
           });
         }
       } else if (granVal === 'character') {
@@ -1323,6 +1466,7 @@
           speaker: ln.speaker || '',
           line: clean
         };
+        addCommentaryFields(row, ln);
         const matchedNgrams = [];
         lineMatchers.forEach((m, idx) => {
           if (!m) return;
@@ -1360,6 +1504,7 @@
         { key: 'scene', label: 'Verse', type: 'number' }
       ];
       const termCols = buildTermColumns();
+      baseCols.push(...getCommentaryColumns());
       baseCols.push(...termCols);
       baseCols.push({ key: 'line', label: 'Verse Text', type: 'text' });
       setHeaders(baseCols);
@@ -1377,6 +1522,7 @@
         {key:'play_title', label:'Book', defaultDir:'asc', type:'text'},
         {key:'act', label:'Chapter', type:'number'},
         {key:'scene', label:'Verse', type:'number'},
+        ...getCommentaryColumns(),
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1387,7 +1533,7 @@
             const totalWords = m.total_words || 0;
             const ngramCount = getRowNgramCount(totalWords);
             const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
-            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id };
+            return addCommentaryFields({ id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id }, m);
           });
           const d = denomFor(normalizeTermN(term.n) || 1,'scene',m);
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1409,6 +1555,7 @@
         {key:'location', label:'Location', defaultDir:'asc', type:'text'},
         {key:'play_title', label:'Book', defaultDir:'asc', type:'text'},
         {key:'act', label:'Chapter', type:'number'},
+        ...getCommentaryColumns(),
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1428,7 +1575,7 @@
           const row = ensureRow(k, () => {
             const total_words = actTotals.get(k) || 0;
             const ngramCount = getRowNgramCount(total_words);
-            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount }, actCommentaryTotals.get(k));
           });
           const d = denomFor(normalizeTermN(term.n) || 1,'act',{play_id:pid,act:actNum});
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1452,6 +1599,7 @@
         {key:'genre', label:'Testament', defaultDir:'asc', type:'text'},
         {key:'num_chapters', label:'# chapters', type:'number'},
         {key:'num_lines', label:'# verses', type:'number'},
+        ...getCommentaryColumns(),
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1467,7 +1615,7 @@
           const row = ensureRow(pid, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = getRowNgramCount(total_words);
-            return { play_id:pid, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ play_id:pid, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount }, p);
           });
           const d = denomFor(normalizeTermN(term.n) || 1,'play',{play_id:pid});
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1488,6 +1636,7 @@
       const baseCols = [
         {key:'genre', label:'Testament', defaultDir:'asc', type:'text'},
         {key:'num_plays', label:'# books', type:'number'},
+        ...getCommentaryColumns(),
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1502,7 +1651,7 @@
           const totalWords = genreTotals.get(genre) || 0;
           const row = ensureRow(genre, () => {
             const ngramCount = getRowNgramCount(totalWords);
-            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
+            return addCommentaryFields({ genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount }, genreCommentaryTotals.get(genre));
           });
           const denom = denomFor(normalizeTermN(term.n) || 1, 'genre', { total_words: totalWords });
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1844,6 +1993,30 @@
       doSearch();
     });
   }
+  if (commentatorColumnControls) {
+    commentatorColumnControls.addEventListener('change', (e) => {
+      const target = e.target;
+      if (!target || target.type !== 'checkbox' || !target.dataset.commentatorKey) return;
+      const key = target.dataset.commentatorKey;
+      if (target.checked) selectedCommentatorColumns.add(key);
+      else selectedCommentatorColumns.delete(key);
+      doSearch();
+      updateDeepLink();
+    });
+    commentatorColumnControls.addEventListener('click', (e) => {
+      const action = e.target && e.target.dataset ? e.target.dataset.commentatorAction : '';
+      if (!action) return;
+      if (action === 'all') {
+        setSelectedCommentatorKeys(getCommentatorConfig().map(item => item.key));
+      } else if (action === 'none') {
+        setSelectedCommentatorKeys([]);
+      } else {
+        return;
+      }
+      doSearch();
+      updateDeepLink();
+    });
+  }
   // Palette and steps options
   document.querySelectorAll('.color-scale-palette').forEach(sel => {
     sel.addEventListener('change', e => { colorScaleState.colorScalePalette = e.target.value; syncColorScaleOptions(); applyColorScalesForVisibleTables(); updateDeepLink(); });
@@ -1856,6 +2029,7 @@
   syncColorScaleOptions();
   renderAllLegends();
   if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+  syncCommentatorColumnControls();
   updateSegmentsMatchModeUI();
   // Highlight toggle handlers
   document.querySelectorAll('.highlight-toggle').forEach(cb => {
