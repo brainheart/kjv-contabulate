@@ -270,8 +270,26 @@ td.ranked-cell {
   flex-wrap: wrap;
   gap: 0.55rem;
 }
-.commentator-column-option {
-  white-space: nowrap;
+.commentator-column-select {
+  max-width: min(34rem, 100%);
+}
+.add-commentator-btn {
+  background: white;
+  color: var(--burgundy);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0.35rem 0.7rem;
+}
+.add-commentator-btn:hover:not(:disabled) {
+  background: var(--gold);
+}
+.add-commentator-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.selected-commentator-columns {
+  flex-basis: 100%;
 }
 .deep-link-wrap {
   margin-top: 0.25rem;

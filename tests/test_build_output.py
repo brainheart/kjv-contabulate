@@ -114,6 +114,7 @@ class TestVerses(unittest.TestCase):
         by_id = {verse["canonical_id"]: verse for verse in self.verses}
         self.assertGreater(by_id["John.1.1"]["commentary_interest"], 0)
         self.assertGreater(by_id["John.1.1"]["commentary_augustine"], 0)
+        self.assertGreater(by_id["John.1.1"]["commentary_theophylact_of_ohrid"], 0)
 
 
 class TestTokens(unittest.TestCase):

@@ -79,27 +79,33 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.trim() === 'Reference')).toBeFalsy();
   });
 
-  test('can select and deselect individual commentator columns', async ({ page }) => {
+  test('can add and remove individual commentator columns', async ({ page }) => {
     await search(page, 'light', { gran: 'play' });
     let texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine'))).toBeFalsy();
+    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeFalsy();
 
     await page.locator('#segmentsTab details summary').click();
-    await page.locator('#commentatorColumnControls input[data-commentator-key="augustine"]').check();
+    const optionTexts = await page.locator('#commentatorColumnSelect option').allTextContents();
+    expect(optionTexts.length).toBeGreaterThan(100);
+    expect(optionTexts.some(t => t === 'Theophylact of Ohrid (8,088)')).toBeTruthy();
+
+    await page.locator('#commentatorColumnSelect').selectOption('augustine');
+    await page.locator('#addCommentatorColumn').click();
 
     texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Aquinas'))).toBeFalsy();
+    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Thomas Aquinas'))).toBeFalsy();
 
-    await page.locator('#commentatorColumnControls input[data-commentator-key="aquinas"]').check();
+    await page.locator('#commentatorColumnSelect').selectOption('theophylact_of_ohrid');
+    await page.locator('#addCommentatorColumn').click();
     texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Aquinas'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Theophylact of Ohrid'))).toBeTruthy();
 
-    await page.locator('#commentatorColumnControls input[data-commentator-key="augustine"]').uncheck();
+    await page.locator('#results thead th').filter({ hasText: 'Augustine of Hippo' }).getByRole('button', { name: /Remove/ }).click();
     texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine'))).toBeFalsy();
-    expect(texts.some(t => t.includes('Aquinas'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeFalsy();
+    expect(texts.some(t => t.includes('Theophylact of Ohrid'))).toBeTruthy();
   });
 
   test('location column sorts books in canonical order', async ({ page }) => {
@@ -249,18 +255,20 @@ test.describe('Deep Links', () => {
   });
 
   test('restores selected commentator columns from URL params', async ({ page }) => {
-    await page.goto('/?q=light&nm=1&gran=play&mm=exact&commentators=augustine,aquinas');
+    await page.goto('/?q=light&nm=1&gran=play&mm=exact&commentators=augustine,theophylact_of_ohrid');
     await waitForDataLoaded(page);
     await page.waitForSelector('#results tbody tr', { timeout: 10000 });
 
     const texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Aquinas'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Theophylact of Ohrid'))).toBeTruthy();
     expect(texts.some(t => t.includes('Luther'))).toBeFalsy();
 
     await page.locator('#segmentsTab details summary').click();
-    await expect(page.locator('#commentatorColumnControls input[data-commentator-key="augustine"]')).toBeChecked();
-    await expect(page.locator('#commentatorColumnControls input[data-commentator-key="aquinas"]')).toBeChecked();
-    await expect(page.locator('#commentatorColumnControls input[data-commentator-key="luther"]')).not.toBeChecked();
+    await expect(page.locator('#selectedCommentatorColumns')).toContainText('Augustine of Hippo');
+    await expect(page.locator('#selectedCommentatorColumns')).toContainText('Theophylact of Ohrid');
+    const optionTexts = await page.locator('#commentatorColumnSelect option').allTextContents();
+    expect(optionTexts.some(t => t.includes('Martin Luther'))).toBeTruthy();
+    expect(optionTexts.some(t => t.includes('Augustine of Hippo'))).toBeFalsy();
   });
 });

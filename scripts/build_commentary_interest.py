@@ -4,24 +4,24 @@
 import argparse
 import bisect
 import json
+import re
 import sqlite3
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
 
-COMMENTATORS = [
-    {"key": "augustine", "name": "Augustine of Hippo", "label": "Augustine"},
-    {"key": "aquinas", "name": "Thomas Aquinas", "label": "Aquinas"},
-    {"key": "luther", "name": "Martin Luther", "label": "Luther"},
-    {"key": "chrysostom", "name": "John Chrysostom", "label": "Chrysostom"},
-    {"key": "jerome", "name": "Jerome", "label": "Jerome"},
-    {"key": "bede", "name": "Bede", "label": "Bede"},
-    {"key": "origen", "name": "Origen of Alexandria", "label": "Origen"},
-    {"key": "tertullian", "name": "Tertullian", "label": "Tertullian"},
-    {"key": "ambrose", "name": "Ambrose of Milan", "label": "Ambrose"},
-]
-
-COMMENTATOR_KEY_BY_NAME = {item["name"]: item["key"] for item in COMMENTATORS}
+PREFERRED_COMMENTATOR_KEYS = {
+    "Ambrose of Milan": "ambrose",
+    "Augustine of Hippo": "augustine",
+    "Bede": "bede",
+    "Jerome": "jerome",
+    "John Chrysostom": "chrysostom",
+    "Martin Luther": "luther",
+    "Origen of Alexandria": "origen",
+    "Tertullian": "tertullian",
+    "Thomas Aquinas": "aquinas",
+}
 
 OSIS_TO_HCF_BOOK = {
     "Gen": "genesis",
@@ -97,6 +97,42 @@ def hcf_location(chapter, verse):
     return int(chapter) * 1_000_000 + int(verse)
 
 
+def slugify_commentator_name(name):
+    preferred = PREFERRED_COMMENTATOR_KEYS.get(name)
+    if preferred:
+        return preferred
+    ascii_name = (
+        unicodedata.normalize("NFKD", name)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+    slug = re.sub(r"[^a-z0-9]+", "_", ascii_name).strip("_")
+    return slug or "commentator"
+
+
+def build_commentator_metadata(names, total_by_commentator):
+    used_keys = set()
+    metadata = []
+    for name in sorted(names, key=lambda value: value.casefold()):
+        base_key = slugify_commentator_name(name)
+        key = base_key
+        suffix = 2
+        while key in used_keys:
+            key = f"{base_key}_{suffix}"
+            suffix += 1
+        used_keys.add(key)
+        metadata.append(
+            {
+                "key": key,
+                "name": name,
+                "label": name,
+                "reference_count": int(total_by_commentator.get(name) or 0),
+            }
+        )
+    return metadata
+
+
 def build_verse_index(chunks):
     by_book = defaultdict(list)
     for row in chunks:
@@ -130,6 +166,8 @@ def build_interest(sqlite_path, chunks_path):
 
     verse_totals = defaultdict(int)
     verse_by_commentator = defaultdict(lambda: defaultdict(int))
+    names = set()
+    total_by_commentator = defaultdict(int)
 
     conn = sqlite3.connect(sqlite_path)
     try:
@@ -154,27 +192,31 @@ def build_interest(sqlite_path, chunks_path):
                 start, end = end, start
             left = bisect.bisect_left(book_locations, start)
             right = bisect.bisect_right(book_locations, end)
-            commentator_key = COMMENTATOR_KEY_BY_NAME.get(father_name)
+            if father_name:
+                names.add(father_name)
             for idx in range(left, right):
                 canonical_id = book_verses[idx]["canonical_id"]
                 verse_totals[canonical_id] += 1
-                if commentator_key:
-                    verse_by_commentator[canonical_id][commentator_key] += 1
+                if father_name:
+                    total_by_commentator[father_name] += 1
+                    verse_by_commentator[canonical_id][father_name] += 1
     finally:
         conn.close()
 
+    commentators = build_commentator_metadata(names, total_by_commentator)
+    key_by_name = {item["name"]: item["key"] for item in commentators}
     verses = {}
     for canonical_id in sorted(verse_totals):
         by_commentator = {
-            key: count
-            for key, count in sorted(verse_by_commentator[canonical_id].items())
+            key_by_name[name]: count
+            for name, count in sorted(verse_by_commentator[canonical_id].items())
             if count
         }
         item = {"total": verse_totals[canonical_id]}
         if by_commentator:
             item["by_commentator"] = by_commentator
         verses[canonical_id] = item
-    return verses
+    return verses, commentators
 
 
 def main():
@@ -195,7 +237,7 @@ def main():
     )
     args = parser.parse_args()
 
-    verses = build_interest(args.sqlite, args.chunks)
+    verses, commentators = build_interest(args.sqlite, args.chunks)
     payload = {
         "metadata": {
             "source_id": "historical_christian_faith",
@@ -203,7 +245,7 @@ def main():
             "source_url": "https://github.com/HistoricalChristianFaith/Commentaries-Database",
             "release_url": "https://github.com/HistoricalChristianFaith/Commentaries-Database/releases/tag/latest",
             "license_url": "https://github.com/HistoricalChristianFaith/Commentaries-Database/blob/master/LICENSE",
-            "commentators": COMMENTATORS,
+            "commentators": commentators,
             "count_meaning": "Number of commentary excerpts whose mapped passage overlaps the verse.",
         },
         "verses": verses,

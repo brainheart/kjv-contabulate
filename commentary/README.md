@@ -13,4 +13,4 @@ python3 scripts/build_commentary_interest.py /tmp/hcf-commentaries.sqlite
 python3 build.py
 ```
 
-The app stores only aggregate counts per KJV verse. It does not vendor the full commentary text database.
+The app stores only aggregate counts per KJV verse and per source commentator. It does not vendor the full commentary text database.

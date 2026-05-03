@@ -324,6 +324,7 @@ def build(source_path: Path, out_dir: Path):
                 "metadata": commentary_metadata,
                 "summary": {
                     "source_file": COMMENTARY_INTEREST_SOURCE,
+                    "total_commentators": len(commentary_metadata.get("commentators", [])),
                     "verses_with_interest": len(commentary_verses),
                     "total_interest": sum(
                         int((item or {}).get("total") or 0)

@@ -233,6 +233,7 @@
   let extraTerms = [];
   let showZeroRows = false;
   let selectedCommentatorColumns = new Set();
+  const legacyDefaultCommentatorKeys = ['augustine', 'aquinas', 'luther', 'chrysostom', 'jerome', 'bede', 'origen', 'tertullian', 'ambrose'];
   const resultsTable = document.getElementById('results');
   let rankHintBubbleEl = null;
   let rankHintBubbleTimer = null;
@@ -741,18 +742,19 @@
     return commentators
       .map(item => ({
         key: String(item && item.key || '').trim(),
-        label: String(item && (item.label || item.name || item.key) || '').trim()
+        label: String(item && (item.label || item.name || item.key) || '').trim(),
+        referenceCount: Number(item && (item.reference_count ?? item.total_references ?? item.count)) || 0
       }))
-      .filter(item => item.key && item.label);
+      .filter(item => item.key && item.label)
+      .sort((a, b) => a.label.localeCompare(b.label) || a.key.localeCompare(b.key));
   }
   function getSelectedCommentatorKeys() {
-    return getCommentatorConfig()
-      .filter(item => selectedCommentatorColumns.has(item.key))
-      .map(item => item.key);
+    const allowed = new Set(getCommentatorConfig().map(item => item.key));
+    return Array.from(selectedCommentatorColumns).filter(key => allowed.has(key));
   }
   function getSelectedCommentatorConfig() {
-    const selected = new Set(getSelectedCommentatorKeys());
-    return getCommentatorConfig().filter(item => selected.has(item.key));
+    const byKey = new Map(getCommentatorConfig().map(item => [item.key, item]));
+    return getSelectedCommentatorKeys().map(key => byKey.get(key)).filter(Boolean);
   }
   function setSelectedCommentatorKeys(keys) {
     const allowed = new Set(getCommentatorConfig().map(item => item.key));
@@ -763,19 +765,48 @@
     );
     syncCommentatorColumnControls();
   }
+  function formatCommentatorReferenceCount(count) {
+    const n = Number(count) || 0;
+    return n.toLocaleString('en-US');
+  }
+  function formatCommentatorOptionLabel(item) {
+    return `${item.label} (${formatCommentatorReferenceCount(item.referenceCount)})`;
+  }
   function decodeCommentatorsParam(raw) {
     return String(raw || '')
       .split(',')
       .map(key => key.trim())
       .filter(Boolean);
   }
+  function addCommentatorColumn(key) {
+    const allowed = new Set(getCommentatorConfig().map(item => item.key));
+    if (!allowed.has(key) || selectedCommentatorColumns.has(key)) return false;
+    selectedCommentatorColumns.add(key);
+    syncCommentatorColumnControls();
+    doSearch();
+    updateDeepLink();
+    return true;
+  }
+  function removeCommentatorColumn(key) {
+    if (!selectedCommentatorColumns.has(key)) return false;
+    selectedCommentatorColumns.delete(key);
+    const colKey = `commentary_${key}`;
+    getSegmentsFiltersMap().delete(colKey);
+    segmentsColumnOrder = segmentsColumnOrder.filter(item => item !== colKey);
+    syncCommentatorColumnControls();
+    doSearch();
+    updateDeepLink();
+    return true;
+  }
   function syncCommentatorColumnControls() {
     if (!commentatorColumnControls) return;
     const config = getCommentatorConfig();
+    const selected = getSelectedCommentatorConfig();
+    const available = config.filter(item => !selectedCommentatorColumns.has(item.key));
     commentatorColumnControls.innerHTML = '';
     const label = document.createElement('span');
     label.className = 'label-strong';
-    label.textContent = 'Commentator columns:';
+    label.textContent = 'Add commentator column:';
     commentatorColumnControls.appendChild(label);
     if (!config.length) {
       const empty = document.createElement('span');
@@ -784,34 +815,44 @@
       commentatorColumnControls.appendChild(empty);
       return;
     }
-    const allButton = document.createElement('button');
-    allButton.type = 'button';
-    allButton.className = 'link-btn link-btn-no-padding';
-    allButton.dataset.commentatorAction = 'all';
-    allButton.textContent = 'All';
-    commentatorColumnControls.appendChild(allButton);
-    const noneButton = document.createElement('button');
-    noneButton.type = 'button';
-    noneButton.className = 'link-btn link-btn-no-padding';
-    noneButton.dataset.commentatorAction = 'none';
-    noneButton.textContent = 'None';
-    commentatorColumnControls.appendChild(noneButton);
-    config.forEach(item => {
-      const itemLabel = document.createElement('label');
-      itemLabel.className = 'commentator-column-option';
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.dataset.commentatorKey = item.key;
-      input.checked = selectedCommentatorColumns.has(item.key);
-      itemLabel.appendChild(input);
-      itemLabel.appendChild(document.createTextNode(` ${item.label}`));
-      commentatorColumnControls.appendChild(itemLabel);
+    const select = document.createElement('select');
+    select.id = 'commentatorColumnSelect';
+    select.className = 'control-select commentator-column-select';
+    select.disabled = available.length === 0;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = available.length ? 'Choose a commentator...' : 'No more commentators available';
+    select.appendChild(placeholder);
+    available.forEach(item => {
+      const option = document.createElement('option');
+      option.value = item.key;
+      option.textContent = formatCommentatorOptionLabel(item);
+      select.appendChild(option);
     });
+    commentatorColumnControls.appendChild(select);
+    const addButton = document.createElement('button');
+    addButton.id = 'addCommentatorColumn';
+    addButton.type = 'button';
+    addButton.className = 'add-commentator-btn';
+    addButton.dataset.commentatorAction = 'add';
+    addButton.disabled = available.length === 0;
+    addButton.textContent = 'Add';
+    commentatorColumnControls.appendChild(addButton);
+    const selectedSummary = document.createElement('span');
+    selectedSummary.id = 'selectedCommentatorColumns';
+    selectedSummary.className = 'muted selected-commentator-columns';
+    selectedSummary.textContent = selected.length
+      ? `Selected: ${selected.map(item => item.label).join(', ')}. Remove columns with × in the table header.`
+      : 'None selected';
+    commentatorColumnControls.appendChild(selectedSummary);
   }
   function getCommentaryFieldKeys(includeIndividuals = true) {
     const keys = ['commentary_interest'];
     if (includeIndividuals) {
-      getCommentatorConfig().forEach(item => keys.push(`commentary_${item.key}`));
+      const commentators = includeIndividuals === 'all'
+        ? getCommentatorConfig()
+        : getSelectedCommentatorConfig();
+      commentators.forEach(item => keys.push(`commentary_${item.key}`));
     }
     return keys;
   }
@@ -832,7 +873,7 @@
       { key: 'commentary_interest', label: 'Commentary Interest', type: 'number', defaultDir: 'desc' }
     ];
     getSelectedCommentatorConfig().forEach(item => {
-      cols.push({ key: `commentary_${item.key}`, label: item.label, type: 'number', defaultDir: 'desc' });
+      cols.push({ key: `commentary_${item.key}`, label: item.label, type: 'number', defaultDir: 'desc', commentatorKey: item.key });
     });
     return cols;
   }
@@ -847,14 +888,14 @@
     const k = `${r.play_id}:${r.act}`;
     actTotals.set(k, (actTotals.get(k)||0) + (r.total_words||0));
     playTotals.set(r.play_id, (playTotals.get(r.play_id)||0) + (r.total_words||0));
-    const actCommentary = actCommentaryTotals.get(k) || copyCommentaryFields(null, true);
-    getCommentaryFieldKeys(true).forEach(key => {
+    const actCommentary = actCommentaryTotals.get(k) || copyCommentaryFields(null, 'all');
+    getCommentaryFieldKeys('all').forEach(key => {
       actCommentary[key] = (actCommentary[key] || 0) + (Number(r[key]) || 0);
     });
     actCommentaryTotals.set(k, actCommentary);
     const genre = r.genre || 'unknown';
-    const genreCommentary = genreCommentaryTotals.get(genre) || copyCommentaryFields(null, true);
-    getCommentaryFieldKeys(true).forEach(key => {
+    const genreCommentary = genreCommentaryTotals.get(genre) || copyCommentaryFields(null, 'all');
+    getCommentaryFieldKeys('all').forEach(key => {
       genreCommentary[key] = (genreCommentary[key] || 0) + (Number(r[key]) || 0);
     });
     genreCommentaryTotals.set(genre, genreCommentary);
@@ -888,7 +929,7 @@
         } else if (sp.has('ic')) {
           const legacyValue = sp.get('ic');
           if (legacyValue === '1') {
-            setSelectedCommentatorKeys(getCommentatorConfig().map(item => item.key));
+            setSelectedCommentatorKeys(legacyDefaultCommentatorKeys);
           } else if (legacyValue && legacyValue !== '0') {
             setSelectedCommentatorKeys(decodeCommentatorsParam(legacyValue));
           } else {
@@ -958,7 +999,7 @@
       if (Array.isArray(st.segments.commentators)) {
         setSelectedCommentatorKeys(st.segments.commentators);
       } else if (typeof st.segments.showCommentatorColumns === 'boolean') {
-        setSelectedCommentatorKeys(st.segments.showCommentatorColumns ? getCommentatorConfig().map(item => item.key) : []);
+        setSelectedCommentatorKeys(st.segments.showCommentatorColumns ? legacyDefaultCommentatorKeys : []);
       }
       if (Array.isArray(st.segments.extraTerms)) {
         extraTerms = st.segments.extraTerms.filter(Boolean);
@@ -1067,6 +1108,19 @@
         removeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           removeExtraTerm(c.termIdx);
+        });
+        th.appendChild(removeBtn);
+      }
+      if (c.commentatorKey) {
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'term-col-remove';
+        removeBtn.textContent = '×';
+        removeBtn.title = `Remove ${c.label}`;
+        removeBtn.setAttribute('aria-label', `Remove ${c.label}`);
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeCommentatorColumn(c.commentatorKey);
         });
         th.appendChild(removeBtn);
       }
@@ -1996,27 +2050,18 @@
     });
   }
   if (commentatorColumnControls) {
-    commentatorColumnControls.addEventListener('change', (e) => {
-      const target = e.target;
-      if (!target || target.type !== 'checkbox' || !target.dataset.commentatorKey) return;
-      const key = target.dataset.commentatorKey;
-      if (target.checked) selectedCommentatorColumns.add(key);
-      else selectedCommentatorColumns.delete(key);
-      doSearch();
-      updateDeepLink();
-    });
     commentatorColumnControls.addEventListener('click', (e) => {
       const action = e.target && e.target.dataset ? e.target.dataset.commentatorAction : '';
-      if (!action) return;
-      if (action === 'all') {
-        setSelectedCommentatorKeys(getCommentatorConfig().map(item => item.key));
-      } else if (action === 'none') {
-        setSelectedCommentatorKeys([]);
-      } else {
-        return;
-      }
-      doSearch();
-      updateDeepLink();
+      if (action !== 'add') return;
+      const select = document.getElementById('commentatorColumnSelect');
+      addCommentatorColumn(select && select.value);
+    });
+    commentatorColumnControls.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const target = e.target;
+      if (!target || target.id !== 'commentatorColumnSelect') return;
+      e.preventDefault();
+      addCommentatorColumn(target.value);
     });
   }
   // Palette and steps options
