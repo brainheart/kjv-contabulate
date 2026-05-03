@@ -96,7 +96,11 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();
     expect(texts.some(t => t.includes('Thomas Aquinas'))).toBeFalsy();
 
-    await page.locator('#commentatorColumnSelect').selectOption('theophylact_of_ohrid');
+    await page.locator('#commentatorColumnFilter').fill('theophylact');
+    const filteredOptionTexts = await page.locator('#commentatorColumnSelect option').allTextContents();
+    expect(filteredOptionTexts.length).toBe(2);
+    expect(filteredOptionTexts.some(t => t === 'Theophylact of Ohrid (8,088)')).toBeTruthy();
+    await expect(page.locator('#commentatorColumnControls .commentator-filter-count')).toContainText('1 of');
     await page.locator('#addCommentatorColumn').click();
     texts = await page.locator('#results thead th').allTextContents();
     expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();

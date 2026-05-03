@@ -270,6 +270,11 @@ td.ranked-cell {
   flex-wrap: wrap;
   gap: 0.55rem;
 }
+.commentator-column-filter {
+  min-width: 14rem;
+  font-size: 1rem;
+  padding: 0.35rem 0.5rem;
+}
 .commentator-column-select {
   max-width: min(34rem, 100%);
 }
@@ -290,6 +295,9 @@ td.ranked-cell {
 }
 .selected-commentator-columns {
   flex-basis: 100%;
+}
+.commentator-filter-count {
+  white-space: nowrap;
 }
 .deep-link-wrap {
   margin-top: 0.25rem;

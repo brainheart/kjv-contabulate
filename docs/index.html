@@ -233,6 +233,7 @@
   let extraTerms = [];
   let showZeroRows = false;
   let selectedCommentatorColumns = new Set();
+  let commentatorColumnFilterText = '';
   const legacyDefaultCommentatorKeys = ['augustine', 'aquinas', 'luther', 'chrysostom', 'jerome', 'bede', 'origen', 'tertullian', 'ambrose'];
   const resultsTable = document.getElementById('results');
   let rankHintBubbleEl = null;
@@ -772,6 +773,19 @@
   function formatCommentatorOptionLabel(item) {
     return `${item.label} (${formatCommentatorReferenceCount(item.referenceCount)})`;
   }
+  function commentatorMatchesFilter(item, filterText) {
+    const terms = String(filterText || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return true;
+    const haystack = `${item.label} ${item.key}`.toLowerCase();
+    return terms.every(term => haystack.includes(term));
+  }
+  function getPendingCommentatorColumnKey() {
+    const select = document.getElementById('commentatorColumnSelect');
+    if (!select) return '';
+    if (select.value) return select.value;
+    const firstOption = Array.from(select.options).find(option => option.value);
+    return firstOption ? firstOption.value : '';
+  }
   function decodeCommentatorsParam(raw) {
     return String(raw || '')
       .split(',')
@@ -782,6 +796,7 @@
     const allowed = new Set(getCommentatorConfig().map(item => item.key));
     if (!allowed.has(key) || selectedCommentatorColumns.has(key)) return false;
     selectedCommentatorColumns.add(key);
+    commentatorColumnFilterText = '';
     syncCommentatorColumnControls();
     doSearch();
     updateDeepLink();
@@ -798,15 +813,16 @@
     updateDeepLink();
     return true;
   }
-  function syncCommentatorColumnControls() {
+  function syncCommentatorColumnControls(focusFilter = false) {
     if (!commentatorColumnControls) return;
     const config = getCommentatorConfig();
     const selected = getSelectedCommentatorConfig();
     const available = config.filter(item => !selectedCommentatorColumns.has(item.key));
+    const filteredAvailable = available.filter(item => commentatorMatchesFilter(item, commentatorColumnFilterText));
     commentatorColumnControls.innerHTML = '';
     const label = document.createElement('span');
     label.className = 'label-strong';
-    label.textContent = 'Add commentator column:';
+    label.textContent = 'Find commentator:';
     commentatorColumnControls.appendChild(label);
     if (!config.length) {
       const empty = document.createElement('span');
@@ -815,15 +831,31 @@
       commentatorColumnControls.appendChild(empty);
       return;
     }
+    const filterInput = document.createElement('input');
+    filterInput.id = 'commentatorColumnFilter';
+    filterInput.className = 'commentator-column-filter';
+    filterInput.type = 'search';
+    filterInput.placeholder = 'Type a name...';
+    filterInput.value = commentatorColumnFilterText;
+    filterInput.setAttribute('autocomplete', 'off');
+    commentatorColumnControls.appendChild(filterInput);
     const select = document.createElement('select');
     select.id = 'commentatorColumnSelect';
     select.className = 'control-select commentator-column-select';
-    select.disabled = available.length === 0;
+    select.disabled = filteredAvailable.length === 0;
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = available.length ? 'Choose a commentator...' : 'No more commentators available';
+    if (!available.length) {
+      placeholder.textContent = 'No more commentators available';
+    } else if (!filteredAvailable.length) {
+      placeholder.textContent = 'No matching commentators';
+    } else {
+      placeholder.textContent = commentatorColumnFilterText.trim()
+        ? `Choose from ${filteredAvailable.length} match${filteredAvailable.length === 1 ? '' : 'es'}...`
+        : 'Choose a commentator...';
+    }
     select.appendChild(placeholder);
-    available.forEach(item => {
+    filteredAvailable.forEach(item => {
       const option = document.createElement('option');
       option.value = item.key;
       option.textContent = formatCommentatorOptionLabel(item);
@@ -835,9 +867,15 @@
     addButton.type = 'button';
     addButton.className = 'add-commentator-btn';
     addButton.dataset.commentatorAction = 'add';
-    addButton.disabled = available.length === 0;
+    addButton.disabled = filteredAvailable.length === 0;
     addButton.textContent = 'Add';
     commentatorColumnControls.appendChild(addButton);
+    const filterCount = document.createElement('span');
+    filterCount.className = 'muted commentator-filter-count';
+    filterCount.textContent = available.length
+      ? `${filteredAvailable.length} of ${available.length} available`
+      : '0 available';
+    commentatorColumnControls.appendChild(filterCount);
     const selectedSummary = document.createElement('span');
     selectedSummary.id = 'selectedCommentatorColumns';
     selectedSummary.className = 'muted selected-commentator-columns';
@@ -845,6 +883,11 @@
       ? `Selected: ${selected.map(item => item.label).join(', ')}. Remove columns with × in the table header.`
       : 'None selected';
     commentatorColumnControls.appendChild(selectedSummary);
+    if (focusFilter) {
+      filterInput.focus();
+      const pos = filterInput.value.length;
+      try { filterInput.setSelectionRange(pos, pos); } catch (_) {}
+    }
   }
   function getCommentaryFieldKeys(includeIndividuals = true) {
     const keys = ['commentary_interest'];
@@ -2050,18 +2093,23 @@
     });
   }
   if (commentatorColumnControls) {
+    commentatorColumnControls.addEventListener('input', (e) => {
+      const target = e.target;
+      if (!target || target.id !== 'commentatorColumnFilter') return;
+      commentatorColumnFilterText = target.value;
+      syncCommentatorColumnControls(true);
+    });
     commentatorColumnControls.addEventListener('click', (e) => {
       const action = e.target && e.target.dataset ? e.target.dataset.commentatorAction : '';
       if (action !== 'add') return;
-      const select = document.getElementById('commentatorColumnSelect');
-      addCommentatorColumn(select && select.value);
+      addCommentatorColumn(getPendingCommentatorColumnKey());
     });
     commentatorColumnControls.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const target = e.target;
-      if (!target || target.id !== 'commentatorColumnSelect') return;
+      if (!target || (target.id !== 'commentatorColumnSelect' && target.id !== 'commentatorColumnFilter')) return;
       e.preventDefault();
-      addCommentatorColumn(target.value);
+      addCommentatorColumn(getPendingCommentatorColumnKey());
     });
   }
   // Palette and steps options
