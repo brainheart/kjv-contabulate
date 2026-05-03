@@ -1493,6 +1493,8 @@
           row.line_highlight_regex = (matchedNgrams.length === 0 || matchedNgrams.length > 60)
             ? null
             : buildHighlightRegexFromNgrams(matchedNgrams);
+        }
+        if (hasTerm || !hasTerms || showZeroRows) {
           rowsMap.set(row.id, row);
         }
       }

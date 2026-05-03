@@ -172,6 +172,21 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.includes('% "light"'))).toBeFalsy();
   });
 
+  test('verse-text granularity shows rows without a search term', async ({ page }) => {
+    await page.selectOption('#gran', 'line');
+    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
+
+    const headers = await page.locator('#results thead th').allTextContents();
+    expect(headers.some(t => t.includes('Location'))).toBeTruthy();
+    expect(headers.some(t => t.includes('Commentary Interest'))).toBeTruthy();
+    expect(headers.some(t => t.includes('Verse Text'))).toBeTruthy();
+
+    const firstRow = await page.locator('#results tbody tr').first().locator('td').allTextContents();
+    expect(firstRow[0].trim()).toBe('01.Gen.001.001');
+    expect(firstRow[1].trim()).toBe('Genesis');
+    expect(firstRow[firstRow.length - 1]).toContain('In the beginning');
+  });
+
   test('bigram and regex search both work', async ({ page }) => {
     await search(page, 'son of', { gran: 'play', ngramMode: '2' });
     expect(await page.locator('#results tbody tr').count()).toBeGreaterThan(0);
