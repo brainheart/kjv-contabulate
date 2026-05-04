@@ -46,6 +46,7 @@
 
     let initialized = false;
     let debouncedDoSearch = null;
+    let searchRequestId = 0;
 
     function callUpdateDeepLink() {
       if (typeof deps.updateDeepLink === 'function') deps.updateDeepLink();
@@ -77,6 +78,16 @@
     function getAllLinesData() {
       if (typeof deps.getAllLines === 'function') return deps.getAllLines() || [];
       return Array.isArray(deps.allLines) ? deps.allLines : [];
+    }
+
+    async function ensureLineDataLoaded() {
+      if (typeof deps.ensureAllLinesLoaded !== 'function') return true;
+      try {
+        await deps.ensureAllLinesLoaded({ showOverlay: true });
+        return true;
+      } catch (e) {
+        return false;
+      }
     }
 
     function getPlaysById() {
@@ -293,7 +304,7 @@
         { key: 'play_title', label: 'Book', defaultDir: 'asc', type: 'text' },
         { key: 'act', label: 'Chapter', type: 'number' },
         { key: 'scene', label: 'Verse', type: 'number' },
-        { key: 'commentary_interest', label: 'Commentary Interest', type: 'number' },
+        { key: 'commentary_interest', label: '# comments', type: 'number' },
         { key: 'text', label: 'Verse Text', defaultDir: 'asc', type: 'text' }
       ];
 
@@ -336,7 +347,8 @@
       updateSortIndicators();
     }
 
-    function doSearch() {
+    async function doSearch() {
+      const requestId = ++searchRequestId;
       if (!els.query || !els.tableBody || !els.pagination) return;
       const query = els.query.value.trim();
       if (!query) {
@@ -344,6 +356,19 @@
         setElementHidden(els.pagination, true);
         updateFilterActions();
         return;
+      }
+
+      if (getAllLinesData().length === 0) {
+        els.tableBody.innerHTML = '<tr><td colspan="5" class="muted">Loading verse data...</td></tr>';
+        setElementHidden(els.pagination, true);
+        const loaded = await ensureLineDataLoaded();
+        if (requestId !== searchRequestId) return;
+        if (!loaded) {
+          els.tableBody.innerHTML = '<tr><td colspan="5" class="warning">Verse data not available.</td></tr>';
+          setElementHidden(els.pagination, true);
+          updateFilterActions();
+          return;
+        }
       }
 
       const rows = buildLinesRows(query);

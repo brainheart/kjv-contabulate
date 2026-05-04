@@ -527,6 +527,7 @@
   let segmentsPageSize = 50;
   let segmentsAllRows = [];
   let lastSegmentsBaseRows = [];
+  let segmentsSearchRequestId = 0;
   function normalizeSegmentsColumnKey(key) {
     return key === 'ref_code' ? 'location' : key;
   }
@@ -657,6 +658,9 @@
       
       setElementHidden(segmentsTab, targetTab !== 'segments');
       setElementHidden(linesTab, targetTab !== 'lines');
+      if (targetTab === 'lines' && typeof ensureAllLinesLoaded === 'function') {
+        ensureAllLinesLoaded().catch(() => {});
+      }
       updateDeepLink();
     });
   });
@@ -680,6 +684,7 @@
   }
 
   let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null, commentaryInterestConfig=null;
+  let allLinesLoadPromise = null;
   setLoadingState(true, "Loading data...");
   try {
     [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig, commentaryInterestConfig] = await Promise.all([
@@ -701,17 +706,40 @@
     return;
   }
 
+  setLoadingState(false);
 
-  // Load line data
-  try {
-    setLoadingState(true, 'Loading paragraph text...');
-    allLines = await loadJSON('lines/all_lines.json');
-  } catch(e) {
-    console.warn('Verse data not available:', e);
-  } finally {
-    // FIX-loading-early-dismiss: clear overlay once data settles,
-    // so a downstream init throw does not leave the spinner frozen.
-    try { setLoadingState(false); } catch(_) {}
+  async function ensureAllLinesLoaded({ showOverlay = false } = {}) {
+    if (Array.isArray(allLines) && allLines.length > 0) return allLines;
+    const shouldShowOverlay = !!showOverlay;
+    if (shouldShowOverlay) setLoadingState(true, 'Loading verse text...');
+    if (!allLinesLoadPromise) {
+      allLinesLoadPromise = loadJSON('lines/all_lines.json')
+        .then(data => {
+          allLines = Array.isArray(data) ? data : [];
+          return allLines;
+        })
+        .catch(e => {
+          allLinesLoadPromise = null;
+          console.warn('Verse data not available:', e);
+          throw e;
+        });
+    }
+    try {
+      return await allLinesLoadPromise;
+    } finally {
+      if (shouldShowOverlay) setLoadingState(false);
+    }
+  }
+
+  function scheduleAllLinesPreload() {
+    const preload = () => {
+      ensureAllLinesLoaded().catch(() => {});
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(preload, { timeout: 5000 });
+    } else {
+      window.setTimeout(preload, 2000);
+    }
   }
 
   const chunkById = new Map(chunks.map(r => [r.scene_id, r]));
@@ -726,7 +754,8 @@
       colorScaleState: colorScaleState,
       showFilterPopover: showFilterPopover,
       applyOrClear: applyOrClear,
-      updateDeepLink: updateDeepLink
+      updateDeepLink: updateDeepLink,
+      ensureAllLinesLoaded: ensureAllLinesLoaded
     });
     linesTabController.init();
   }
@@ -913,7 +942,7 @@
   }
   function getCommentaryColumns() {
     const cols = [
-      { key: 'commentary_interest', label: 'Commentary Interest', type: 'number', defaultDir: 'desc' }
+      { key: 'commentary_interest', label: '# comments', type: 'number', defaultDir: 'desc' }
     ];
     getSelectedCommentatorConfig().forEach(item => {
       cols.push({ key: `commentary_${item.key}`, label: item.label, type: 'number', defaultDir: 'desc', commentatorKey: item.key });
@@ -2002,9 +2031,29 @@
   // Update deep link initially
   updateDeepLink();
   
-  function doSearch(preferredSortTermIndex = null){
+  function showSegmentsTableMessage(message, className = 'muted') {
+    const colSpan = Math.max(1, theadRow.children.length || 8);
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="${className}">${escapeHTML(message)}</td></tr>`;
+    setElementHidden(document.getElementById('segmentsPagination'), true);
+    updateSegmentsFilterActions();
+  }
+
+  async function doSearch(preferredSortTermIndex = null){
+    const requestId = ++segmentsSearchRequestId;
     pruneExtraTermsAgainstPrimary();
     renderExtraTerms();
+    if (gran.value === 'line' && (!Array.isArray(allLines) || allLines.length === 0)) {
+      showSegmentsTableMessage('Loading verse text...');
+      try {
+        await ensureAllLinesLoaded({ showOverlay: true });
+      } catch (e) {
+        if (requestId === segmentsSearchRequestId) {
+          showSegmentsTableMessage('Verse data not available.', 'warning');
+        }
+        return;
+      }
+      if (requestId !== segmentsSearchRequestId) return;
+    }
     const terms = getActiveTerms();
     const rows = buildRowsForTerms(terms, preferredSortTermIndex);
     if (rows !== null) {
@@ -2157,6 +2206,7 @@
     gran.value = 'play';
     doSearch();
   }
+  scheduleAllLinesPreload();
 
   // Local testing override: force a tab open without affecting normal defaults/deep links
   (function applyShowTabOverride() {
