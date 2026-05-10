@@ -17,7 +17,7 @@ async function search(page, query, { gran = 'play', ngramMode = '1', matchMode =
   await page.press('#q', 'Enter');
   await page.waitForSelector('#results tbody tr', { timeout: 10000 });
   if (gran === 'line') {
-    await expect(page.locator('#results thead')).toContainText('Verse Text', { timeout: 10000 });
+    await expect(page.locator('#results thead')).toContainText('Verse', { timeout: 10000 });
   }
 }
 
@@ -136,13 +136,12 @@ test.describe('Segments Search', () => {
     ]);
   });
 
-  test('verse granularity shows location and verse columns', async ({ page }) => {
-    await search(page, 'light', { gran: 'scene' });
-    const texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Location'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Book'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Chapter'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
+  test('granularity selector uses Verse for verse text rows', async ({ page }) => {
+    const options = await page.locator('#gran option').evaluateAll((opts) =>
+      opts.map((opt) => ({ value: opt.value, text: (opt.textContent || '').trim() }))
+    );
+    expect(options.some((opt) => opt.value === 'scene')).toBeFalsy();
+    expect(options).toContainEqual({ value: 'line', text: 'Verse' });
   });
 
   test('testament granularity shows two rows and book counts', async ({ page }) => {
@@ -165,7 +164,7 @@ test.describe('Segments Search', () => {
     expect(await page.locator('#results tbody tr').count()).toBeGreaterThan(0);
   });
 
-  test('verse-text granularity updates highlights when toggled', async ({ page }) => {
+  test('verse granularity updates highlights when toggled', async ({ page }) => {
     await search(page, 'light', { gran: 'line' });
     await page.locator('#segmentsTab details summary').click();
 
@@ -176,7 +175,7 @@ test.describe('Segments Search', () => {
     await expect(page.locator('#results tbody td .hit')).toHaveCount(0);
   });
 
-  test('verse-text granularity shows counts even when percent display is selected', async ({ page }) => {
+  test('verse granularity shows counts even when percent display is selected', async ({ page }) => {
     await page.selectOption('#newTermDisplay', 'pct');
     await search(page, 'light', { gran: 'line' });
 
@@ -185,14 +184,14 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.includes('% "light"'))).toBeFalsy();
   });
 
-  test('verse-text granularity shows rows without a search term', async ({ page }) => {
+  test('verse granularity shows rows without a search term', async ({ page }) => {
     await page.selectOption('#gran', 'line');
     await expect(page.locator('#results tbody tr:first-child td:first-child')).toHaveText('01.Gen.001.001', { timeout: 10000 });
 
     const headers = await page.locator('#results thead th').allTextContents();
     expect(headers.some(t => t.includes('Location'))).toBeTruthy();
     expect(headers.some(t => t.includes('# comments'))).toBeTruthy();
-    expect(headers.some(t => t.includes('Verse Text'))).toBeTruthy();
+    expect(headers.some(t => t.includes('Verse'))).toBeTruthy();
 
     const firstRow = await page.locator('#results tbody tr').first().locator('td').allTextContents();
     expect(firstRow[0].trim()).toBe('01.Gen.001.001');
@@ -225,19 +224,19 @@ test.describe('Verses Tab', () => {
   test('shows matching verses with Bible-specific headers', async ({ page }) => {
     await page.fill('#linesQuery', 'light');
     await page.press('#linesQuery', 'Enter');
-    await expect(page.locator('#linesResults thead')).toContainText('Verse Text', { timeout: 10000 });
+    await expect(page.locator('#linesResults thead')).toContainText('Verse', { timeout: 10000 });
 
     const texts = await page.locator('#linesResults thead th').allTextContents();
     expect(texts.some(t => t.includes('Book'))).toBeTruthy();
     expect(texts.some(t => t.includes('Chapter'))).toBeTruthy();
     expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Verse Text'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
   });
 
   test('removes verse highlights when the toggle is unchecked', async ({ page }) => {
     await page.fill('#linesQuery', 'light');
     await page.press('#linesQuery', 'Enter');
-    await expect(page.locator('#linesResults thead')).toContainText('Verse Text', { timeout: 10000 });
+    await expect(page.locator('#linesResults thead')).toContainText('Verse', { timeout: 10000 });
     await page.locator('#linesTab details').evaluate((el) => { el.open = true; });
 
     await expect(page.locator('#linesResults tbody td .hit').first()).toBeVisible({ timeout: 10000 });
@@ -277,5 +276,21 @@ test.describe('Deep Links', () => {
     const optionTexts = await page.locator('#commentatorColumnSelect option').allTextContents();
     expect(optionTexts.some(t => t.includes('Martin Luther'))).toBeTruthy();
     expect(optionTexts.some(t => t.includes('Augustine of Hippo'))).toBeFalsy();
+  });
+
+  test('maps legacy verse URL granularities to text-backed Verse view', async ({ page }) => {
+    await page.goto('/?q=light&nm=1&gran=line&mm=exact&sk=location&sd=asc&cs=1&zr=0&hl=1');
+    await waitForDataLoaded(page);
+    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
+    await expect(page.locator('#gran')).toHaveValue('line');
+    let texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
+
+    await page.goto('/?q=light&nm=1&gran=scene&mm=exact&sk=location&sd=asc&cs=1&zr=0&hl=1');
+    await waitForDataLoaded(page);
+    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
+    await expect(page.locator('#gran')).toHaveValue('line');
+    texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
   });
 });
