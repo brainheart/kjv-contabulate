@@ -49,6 +49,7 @@ class TestBooks(unittest.TestCase):
             "genre",
             "total_words",
             "total_lines",
+            "verse_count",
             "num_acts",
             "num_scenes",
             "commentary_interest",
@@ -67,6 +68,8 @@ class TestBooks(unittest.TestCase):
         self.assertEqual(by_abbr["Ps"]["num_acts"], 150)
         self.assertEqual(by_abbr["Matt"]["num_scenes"], 1071)
         self.assertEqual(by_abbr["Rev"]["num_scenes"], 404)
+        self.assertEqual(by_abbr["Matt"]["verse_count"], by_abbr["Matt"]["num_scenes"])
+        self.assertEqual(by_abbr["Rev"]["verse_count"], by_abbr["Rev"]["total_lines"])
 
     def test_unique_ids_and_abbreviations(self):
         book_ids = [book["play_id"] for book in self.books]
@@ -98,9 +101,10 @@ class TestVerses(unittest.TestCase):
         self.assertEqual(first["scene"], 1)
 
     def test_verse_has_required_fields(self):
-        required = {"scene_id", "canonical_id", "location", "play_id", "act", "scene", "total_words", "commentary_interest"}
+        required = {"scene_id", "canonical_id", "location", "play_id", "act", "scene", "total_words", "verse_count", "commentary_interest"}
         for verse in self.verses[:25]:
             self.assertTrue(required.issubset(verse.keys()))
+            self.assertEqual(verse["verse_count"], 1)
 
     def test_all_verses_reference_valid_books(self):
         for verse in self.verses:

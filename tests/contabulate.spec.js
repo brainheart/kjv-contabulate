@@ -79,6 +79,7 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.includes('# chapters'))).toBeTruthy();
     expect(texts.some(t => t.includes('# verses'))).toBeTruthy();
     expect(texts.some(t => t.includes('# comments'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Comments / verse'))).toBeTruthy();
     expect(texts.some(t => t.trim() === 'Reference')).toBeFalsy();
   });
 
@@ -157,11 +158,17 @@ test.describe('Segments Search', () => {
     expect(newTestament).toBeTruthy();
     expect(oldTestament).toContain('39');
     expect(newTestament).toContain('27');
+    const headers = await page.locator('#results thead th').allTextContents();
+    expect(headers.some(t => t.includes('# verses'))).toBeTruthy();
+    expect(headers.some(t => t.includes('Comments / verse'))).toBeTruthy();
   });
 
   test('chapter granularity returns results', async ({ page }) => {
     await search(page, 'light', { gran: 'act' });
     expect(await page.locator('#results tbody tr').count()).toBeGreaterThan(0);
+    const headers = await page.locator('#results thead th').allTextContents();
+    expect(headers.some(t => t.includes('# verses'))).toBeTruthy();
+    expect(headers.some(t => t.includes('Comments / verse'))).toBeTruthy();
   });
 
   test('verse granularity updates highlights when toggled', async ({ page }) => {

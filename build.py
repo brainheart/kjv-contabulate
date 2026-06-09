@@ -250,6 +250,7 @@ def build(source_path: Path, out_dir: Path):
                 "unique_words": unique_words,
                 "num_speeches": 0,
                 "num_lines": 1,
+                "verse_count": 1,
                 "characters_present_count": 0,
             }
             chunk_row.update(verse_commentary_fields)
@@ -298,6 +299,7 @@ def build(source_path: Path, out_dir: Path):
             "num_speeches": 0,
             "total_words": book_total_words,
             "total_lines": len(verses),
+            "verse_count": len(verses),
         }
         book_row.update(book_commentary_fields)
         plays.append(book_row)
