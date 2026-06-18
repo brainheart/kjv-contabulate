@@ -69,6 +69,10 @@
         <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
         <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching verse text</label>
         <label><input type="checkbox" id="showZeroRows"> Show zero-hit rows</label>
+        <div id="extraColumnControls" class="extra-column-controls" role="group" aria-label="Extra columns">
+          <span class="label-strong">Extra columns:</span>
+          <span class="muted">Loading...</span>
+        </div>
         <div id="commentatorColumnControls" class="commentator-column-controls" role="group" aria-label="Individual commentator columns">
           <span class="label-strong">Commentator columns:</span>
           <span class="muted">Loading...</span>
@@ -89,13 +93,6 @@
             </select>
           </label>
         </div>
-      </div>
-      <div class="options-row">
-        <span class="label-strong">Extra columns:</span>
-        <label title="Average sentence length: words per sentence, with sentences split on . ! ? — higher = longer, more complex sentences."><input type="checkbox" class="metric-col-toggle" data-metric="wps"> Words/Sentence</label>
-        <label title="Average word length in letters. Higher = longer words."><input type="checkbox" class="metric-col-toggle" data-metric="wlen"> Word Length</label>
-        <label title="How rare the vocabulary is: each word is scored by its rarity in the whole corpus (−log10 of its frequency share), averaged over the row's words. Higher = rarer vocabulary."><input type="checkbox" class="metric-col-toggle" data-metric="rare"> Lexical Rarity</label>
-        <label title="Vocabulary diversity (MATTR-50): type–token ratio averaged over a moving 50-word window, 0–1. Higher = more varied vocabulary; comparable across texts of different lengths. Available at Book level."><input type="checkbox" class="metric-col-toggle" data-metric="mattr"> Vocab Diversity</label>
       </div>
       <div class="color-scale-legend"></div>
       <div class="deep-link-wrap">
@@ -225,6 +222,7 @@
   const theadRow = document.getElementById('headRow');
   const tbody = document.querySelector('#results tbody');
   const showZeroRowsToggle = document.getElementById('showZeroRows');
+  const extraColumnControls = document.getElementById('extraColumnControls');
   const commentatorColumnControls = document.getElementById('commentatorColumnControls');
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termWarning = document.getElementById('termWarning');
@@ -238,9 +236,9 @@
   let addColumnPromptStepIndex = 0;
   let extraTerms = [];
   let showZeroRows = false;
-  // Optional metric columns (off by default; toggled in Options, persisted in deep links via `mc=`)
+  // Optional metric columns are on by default and can be hidden from Options or the table header.
   const METRIC_COL_DEFS = [
-    { code: 'wps', key: 'words_per_sentence', label: 'Words/Sentence', decimals: 1,
+    { code: 'wps', key: 'words_per_sentence', label: 'Words / Sentence', decimals: 1,
       tooltip: 'Average sentence length: words per sentence, with sentences split on . ! ? — higher = longer, more complex sentences.' },
     { code: 'wlen', key: 'mean_word_length', label: 'Word Length', decimals: 2,
       tooltip: 'Average word length in letters. Higher = longer words.' },
@@ -249,11 +247,12 @@
     { code: 'mattr', key: 'mattr_50', label: 'Vocab Diversity', decimals: 3, granOnly: ['play'],
       tooltip: 'Vocabulary diversity (MATTR-50): type–token ratio averaged over a moving 50-word window, 0–1. Higher = more varied vocabulary; comparable across texts of different lengths. Available at Book level.' },
   ];
-  let enabledMetricCodes = [];
+  let enabledMetricCodes = METRIC_COL_DEFS.map(d => d.code);
   const metricToggles = Array.from(document.querySelectorAll('.metric-col-toggle'));
   function syncMetricToggles() {
     metricToggles.forEach(cb => { cb.checked = enabledMetricCodes.includes(cb.dataset.metric); });
   }
+  let hiddenExtraColumns = new Set();
   let selectedCommentatorColumns = new Set();
   let commentatorColumnFilterText = '';
   const legacyDefaultCommentatorKeys = ['augustine', 'aquinas', 'luther', 'chrysostom', 'jerome', 'bede', 'origen', 'tertullian', 'ambrose'];
@@ -535,6 +534,7 @@
   let sortKey = null, sortDir = 'desc';
   let linesTabController = null;
   let segmentsColumnOrder = [];
+  let segmentsRawColumnDefs = [];
   let segmentsColumnDefs = [];
   // Column filters maps (declare early for deep-link)
   // Scope segments filters by current granularity (play/genre/act/line/character)
@@ -570,9 +570,9 @@
     p.set('zr', showZeroRows ? '1' : '0');
     const selectedCommentatorsParam = getSelectedCommentatorKeys().join(',');
     if (selectedCommentatorsParam) p.set('commentators', selectedCommentatorsParam);
+    if (hiddenExtraColumns.size) p.set('hc', Array.from(hiddenExtraColumns).sort().join(','));
     // palette and steps omitted for cleaner URLs
     p.set('hl', colorScaleState.highlightEnabled ? '1' : '0');
-    if (enabledMetricCodes.length) p.set('mc', enabledMetricCodes.join(','));
     // Segments
     const segTermState = getActiveTermsStateParts();
     p.set('q', segTermState.primary ? segTermState.primary.text : '');
@@ -997,6 +997,81 @@
     cols.splice(1, 0, { key: 'commentary_per_verse', label: 'Comments / verse', type: 'number', defaultDir: 'desc' });
     return cols;
   }
+  const extraColumnLabels = {
+    num_plays: '# books',
+    num_chapters: '# chapters',
+    verse_count: '# verses',
+    commentary_interest: '# comments',
+    commentary_per_verse: 'Comments / verse',
+    ngram_count: '# words',
+    words_per_sentence: 'Words / Sentence',
+    mean_word_length: 'Word Length',
+    lexical_rarity: 'Lexical Rarity',
+    mattr_50: 'Vocab Diversity'
+  };
+  const extraColumnOrder = [
+    'num_plays',
+    'num_chapters',
+    'verse_count',
+    'commentary_interest',
+    'commentary_per_verse',
+    'ngram_count',
+    ...METRIC_COL_DEFS.map(d => d.key)
+  ];
+  function isExtraColumnKey(key) {
+    return Object.prototype.hasOwnProperty.call(extraColumnLabels, normalizeSegmentsColumnKey(key));
+  }
+  function decodeExtraColumnsParam(raw) {
+    return String(raw || '')
+      .split(',')
+      .map(key => normalizeSegmentsColumnKey(key.trim()))
+      .filter(isExtraColumnKey);
+  }
+  function normalizeHeaderLabel(label) {
+    return String(label || '').replace(/\s*\/\s*/g, ' / ');
+  }
+  function filterVisibleExtraColumns(cols) {
+    return (cols || []).filter(col => !col || !isExtraColumnKey(col.key) || !hiddenExtraColumns.has(normalizeSegmentsColumnKey(col.key)));
+  }
+  function syncExtraColumnControls() {
+    if (!extraColumnControls) return;
+    const active = new Map();
+    (segmentsRawColumnDefs || []).forEach(col => {
+      if (col && isExtraColumnKey(col.key)) {
+        active.set(normalizeSegmentsColumnKey(col.key), normalizeHeaderLabel(col.label || extraColumnLabels[col.key] || col.key));
+      }
+    });
+    extraColumnControls.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'label-strong';
+    label.textContent = 'Extra columns:';
+    extraColumnControls.appendChild(label);
+    if (!active.size) {
+      const empty = document.createElement('span');
+      empty.className = 'muted';
+      empty.textContent = 'None for this view';
+      extraColumnControls.appendChild(empty);
+      return;
+    }
+    extraColumnOrder.filter(key => active.has(key)).forEach(key => {
+      const item = document.createElement('label');
+      item.className = 'extra-column-toggle';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = !hiddenExtraColumns.has(key);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) hiddenExtraColumns.delete(key);
+        else hiddenExtraColumns.add(key);
+        getSegmentsFiltersMap().delete(key);
+        segmentsColumnOrder = segmentsColumnOrder.filter(itemKey => itemKey !== key);
+        doSearch();
+        updateDeepLink();
+      });
+      item.appendChild(checkbox);
+      item.appendChild(document.createTextNode(` ${active.get(key)}`));
+      extraColumnControls.appendChild(item);
+    });
+  }
   syncCommentatorColumnControls();
 
   // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
@@ -1104,9 +1179,10 @@
           if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
         }
         if (sp.has('mc')) {
-          const codes = sp.get('mc').split(',').map(s2 => s2.trim());
-          enabledMetricCodes = METRIC_COL_DEFS.map(d => d.code).filter(c => codes.includes(c));
-          syncMetricToggles();
+          const codes = new Set(sp.get('mc').split(',').map(s2 => s2.trim()));
+          METRIC_COL_DEFS.forEach(d => {
+            if (!codes.has(d.code)) hiddenExtraColumns.add(d.key);
+          });
         }
         if (sp.has('commentators')) {
           setSelectedCommentatorKeys(decodeCommentatorsParam(sp.get('commentators')));
@@ -1119,6 +1195,9 @@
           } else {
             setSelectedCommentatorKeys([]);
           }
+        }
+        if (sp.has('hc')) {
+          hiddenExtraColumns = new Set(decodeExtraColumnsParam(sp.get('hc')));
         }
         if (sp.has('ts')) {
           setActiveTermsFromRestoredState(null, decodeTermSpecsParam(sp.get('ts')), true);
@@ -1187,6 +1266,9 @@
       }
       if (Array.isArray(st.segments.extraTerms)) {
         extraTerms = st.segments.extraTerms.filter(Boolean);
+      }
+      if (Array.isArray(st.segments.hiddenExtraColumns)) {
+        hiddenExtraColumns = new Set(st.segments.hiddenExtraColumns.map(normalizeSegmentsColumnKey).filter(isExtraColumnKey));
       }
         setActiveTermsFromRestoredState(st.segments.q != null ? q.value : '', extraTerms, true);
         if (st.segments.sortKey) sortKey = normalizeSegmentsColumnKey(st.segments.sortKey);
@@ -1259,7 +1341,9 @@
   // Column filters state (moved earlier)
   
   function setHeaders(cols, preserveOrder){
-    segmentsColumnDefs = Array.isArray(cols) ? cols.slice() : [];
+    segmentsRawColumnDefs = Array.isArray(cols) ? cols.slice() : [];
+    syncExtraColumnControls();
+    segmentsColumnDefs = filterVisibleExtraColumns(segmentsRawColumnDefs);
     if (!preserveOrder) segmentsColumnOrder = [];
     const orderedCols = applyColumnOrder(segmentsColumnDefs, segmentsColumnOrder);
     segmentsColumnOrder = orderedCols.map(c => c.key);
@@ -1272,7 +1356,7 @@
       th.title = c.tooltip ? `${c.tooltip} Click to sort.` : 'Click to sort';
       const labelSpan = document.createElement('span');
       labelSpan.className = 'th-label';
-      labelSpan.textContent = c.label;
+      labelSpan.textContent = normalizeHeaderLabel(c.label);
       th.appendChild(labelSpan);
       th.addEventListener('click', () => {
         if (Date.now() < getSortClickSuppressedUntil()) return;
@@ -1305,6 +1389,24 @@
         removeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           removeCommentatorColumn(c.commentatorKey);
+        });
+        th.appendChild(removeBtn);
+      }
+      if (isExtraColumnKey(c.key)) {
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'term-col-remove';
+        removeBtn.textContent = '×';
+        removeBtn.title = `Remove ${normalizeHeaderLabel(c.label)}`;
+        removeBtn.setAttribute('aria-label', `Remove ${normalizeHeaderLabel(c.label)}`);
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const key = normalizeSegmentsColumnKey(c.key);
+          hiddenExtraColumns.add(key);
+          getSegmentsFiltersMap().delete(key);
+          segmentsColumnOrder = segmentsColumnOrder.filter(item => item !== key);
+          doSearch();
+          updateDeepLink();
         });
         th.appendChild(removeBtn);
       }
@@ -2388,6 +2490,6 @@
     <a href="https://github.com/brainheart/kjv-contabulate" target="_blank" rel="noopener">Source</a>
   
     <span aria-hidden="true"> · </span>
-    <a href="https://github.com/brainheart/kjv-contabulate/commit/bcc5a38" target="_blank" rel="noopener" title="Current deployed build">build bcc5a38</a></footer>
+    <span title="Current deployed build">Updated 2026-06-18 19:29 EDT</span></footer>
 </body>
 </html>
