@@ -264,15 +264,11 @@ td.ranked-cell {
   align-items: center;
   flex-wrap: wrap;
 }
-.commentator-column-controls,
-.extra-column-controls {
+.commentator-column-controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.55rem;
-}
-.extra-column-toggle {
-  white-space: nowrap;
 }
 .commentator-column-filter {
   min-width: 14rem;

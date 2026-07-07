@@ -83,31 +83,6 @@ test.describe('Segments Search', () => {
     expect(texts.some(t => t.trim() === 'Reference')).toBeFalsy();
   });
 
-  test('extra metric columns start visible and can be removed and re-added', async ({ page }) => {
-    await search(page, 'light', { gran: 'play' });
-
-    let texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('# comments'))).toBeTruthy();
-    expect(texts.some(t => t.includes('# words'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Words / Sentence'))).toBeTruthy();
-
-    await page.locator('#results thead th').filter({ hasText: '# comments' }).getByRole('button', { name: /Remove/ }).click();
-    texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('# comments'))).toBeFalsy();
-
-    await page.locator('#segmentsTab details summary').click();
-    await expect(page.locator('#extraColumnControls label', { hasText: '# comments' }).locator('input')).not.toBeChecked();
-    await page.locator('#extraColumnControls label', { hasText: '# comments' }).click();
-
-    texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('# comments'))).toBeTruthy();
-    await expect(page.locator('#extraColumnControls label', { hasText: '# comments' }).locator('input')).toBeChecked();
-
-    await page.locator('#extraColumnControls label', { hasText: 'Words / Sentence' }).locator('input').uncheck();
-    texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Words / Sentence'))).toBeFalsy();
-  });
-
   test('can add and remove individual commentator columns', async ({ page }) => {
     await search(page, 'light', { gran: 'play' });
     let texts = await page.locator('#results thead th').allTextContents();
