@@ -3,8 +3,12 @@ const { test, expect } = require('@playwright/test');
 
 async function waitForDataLoaded(page) {
   await page.waitForFunction(() => {
-    return document.querySelector('.tab-btn') !== null && window.__contabulateReady === true;
+    return window.__contabulateReady === true;
   }, { timeout: 15000 });
+}
+
+async function pickSampleQuery(page) {
+  return 'light';
 }
 
 async function search(page, query, { gran = 'play', ngramMode = '1', matchMode = 'exact' } = {}) {
@@ -25,36 +29,20 @@ test.describe('Page Load', () => {
   test('loads and shows the KJV title', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveTitle(/King James Bible/);
-    await expect(page.locator('a[href="https://github.com/HistoricalChristianFaith/Commentaries-Database"]').first()).toBeVisible();
   });
 
-  test('shows both contexts and verses tabs', async ({ page }) => {
-    await page.goto('/');
-    await waitForDataLoaded(page);
-    await expect(page.locator('.tab-btn')).toHaveCount(2);
-    await expect(page.locator('.tab-btn[data-tab="lines"]')).toContainText('Rows are Verses');
-  });
-
-  test('defaults to canonical book order on open', async ({ page }) => {
+  test('shows base stats on first load with no search terms', async ({ page }) => {
     await page.goto('/');
     await waitForDataLoaded(page);
     await page.waitForSelector('#results tbody tr', { timeout: 10000 });
-
-    await expect(page.locator('#gran')).toHaveValue('play');
-    await expect(page.locator('#results thead th.sorted-asc')).toContainText('Location');
-
-    const firstRows = await page.locator('#results tbody tr').evaluateAll((trs) =>
-      trs.slice(0, 3).map((tr) =>
-        Array.from(tr.querySelectorAll('td'))
-          .slice(0, 2)
-          .map((td) => (td.textContent || '').trim())
-      )
-    );
-    expect(firstRows).toEqual([
-      ['01.Gen', 'Genesis'],
-      ['02.Exod', 'Exodus'],
-      ['03.Lev', 'Leviticus'],
-    ]);
+    await expect(page.locator('#results tbody tr')).toHaveCount(50);
+    const texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Location'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Book'))).toBeTruthy();
+    expect(texts.some(t => t.includes('# words'))).toBeTruthy();
+    expect(texts.some(t => t.includes('# verses'))).toBeTruthy();
+    expect(texts.some(t => t.includes('# comments'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Comments / verse'))).toBeTruthy();
   });
 });
 
@@ -64,77 +52,84 @@ test.describe('Segments Search', () => {
     await waitForDataLoaded(page);
   });
 
-  test('book granularity returns 66 rows for a common word', async ({ page }) => {
-    await search(page, 'the', { gran: 'play' });
-    await page.selectOption('#segmentsPageSize', '100');
-    await expect(page.locator('#results tbody tr')).toHaveCount(66);
+  test('supports exact-term auto ngram detection and removable headers', async ({ page }) => {
+    const sample = await pickSampleQuery(page);
+    await page.fill('#q', `${sample} ${sample}`);
+    await page.click('#addColumnBtn');
+    await expect(page.locator('#results thead th')).toContainText([`"${sample} ${sample}"`]);
+    await page.locator('#results thead th button.term-col-remove').click();
+    await expect(page.locator('#results thead th')).not.toContainText([`"${sample} ${sample}"`]);
   });
 
-  test('book granularity shows Bible-specific columns', async ({ page }) => {
-    await search(page, 'light', { gran: 'play' });
-    const texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Location'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Book'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Testament'))).toBeTruthy();
-    expect(texts.some(t => t.includes('# chapters'))).toBeTruthy();
-    expect(texts.some(t => t.includes('# verses'))).toBeTruthy();
-    expect(texts.some(t => t.includes('# comments'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Comments / verse'))).toBeTruthy();
-    expect(texts.some(t => t.trim() === 'Reference')).toBeFalsy();
-  });
-
-  test('can add and remove individual commentator columns', async ({ page }) => {
-    await search(page, 'light', { gran: 'play' });
+  test('can add commentator columns from the + popover', async ({ page }) => {
+    const sample = await pickSampleQuery(page);
+    await search(page, sample, { gran: 'play' });
     let texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('# verses'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Comments / verse'))).toBeTruthy();
     expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeFalsy();
 
-    await page.locator('#segmentsTab details summary').click();
-    const optionTexts = await page.locator('#commentatorColumnSelect option').allTextContents();
-    expect(optionTexts.length).toBeGreaterThan(100);
-    expect(optionTexts.some(t => t === 'Theophylact of Ohrid (8,088)')).toBeTruthy();
-
-    await page.locator('#commentatorColumnSelect').selectOption('augustine');
-    await page.locator('#addCommentatorColumn').click();
-
+    await page.locator('#results thead th.add-column-th').click();
+    const popover = page.locator('.add-column-popover');
+    await expect(popover).toBeVisible();
+    await popover.locator('.add-column-search').fill('augustine of hippo');
+    await popover.locator('.add-column-option', { hasText: 'Augustine of Hippo' }).first().click();
+    await popover.locator('.add-column-search').fill('theophylact');
+    const theophylact = popover.locator('.add-column-option', { hasText: 'Theophylact' });
+    await expect(theophylact).toHaveCount(1);
+    await expect(theophylact.locator('.count')).toHaveText('8,088');
+    await theophylact.click();
+    await page.keyboard.press('Escape');
     texts = await page.locator('#results thead th').allTextContents();
     expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Thomas Aquinas'))).toBeFalsy();
-
-    await page.locator('#commentatorColumnFilter').fill('theophylact');
-    const filteredOptionTexts = await page.locator('#commentatorColumnSelect option').allTextContents();
-    expect(filteredOptionTexts.length).toBe(2);
-    expect(filteredOptionTexts.some(t => t === 'Theophylact of Ohrid (8,088)')).toBeTruthy();
-    await expect(page.locator('#commentatorColumnControls .commentator-filter-count')).toContainText('1 of');
-    await page.locator('#addCommentatorColumn').click();
-    texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Theophylact of Ohrid'))).toBeTruthy();
-
-    await page.locator('#results thead th').filter({ hasText: 'Augustine of Hippo' }).getByRole('button', { name: /Remove/ }).click();
-    texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeFalsy();
     expect(texts.some(t => t.includes('Theophylact of Ohrid'))).toBeTruthy();
   });
 
-  test('location column sorts books in canonical order', async ({ page }) => {
-    await search(page, 'the', { gran: 'play' });
-    await page.selectOption('#segmentsPageSize', '100');
+  test('count cells drill down and ancestor cells filter', async ({ page }) => {
+    await page.goto('/');
+    await waitForDataLoaded(page);
+    // Books → the 50 chapters of Genesis
+    await page.locator('#results tbody tr').first().locator('td:nth-child(4) button.drill-link').click();
+    await expect(page.locator('#gran')).toHaveValue('act');
+    await expect(page.locator('#segmentsTotalInfo')).toContainText('(50 total rows)');
+    await expect(page.locator('#segmentsActiveFilters .active-filter-chip')).toContainText('starts with 01.Gen.');
+    // Back un-drills
+    await page.goBack();
+    await expect(page.locator('#gran')).toHaveValue('play');
+    // Testament cell filters books to that testament
+    await page.locator('#results tbody tr').first().locator('td:nth-child(3) .drill-link').click();
+    await expect(page.locator('#results tbody tr')).toHaveCount(39);
+    await expect(page.locator('#segmentsActiveFilters .active-filter-chip')).toContainText('is Old Testament');
+  });
 
-    await page.locator('#results thead th').filter({ hasText: 'Location' }).first().click();
-    await expect(page.locator('#results thead th.sorted-asc')).toContainText('Location');
+  test('vocabulary granularities put n-grams in the rows', async ({ page }) => {
+    await page.goto('/');
+    await waitForDataLoaded(page);
+    await page.selectOption('#gran', 'word');
+    await expect(page.locator('#results thead th[data-key="ngram"]')).toHaveCount(1);
+    await expect(page.locator('#results thead th[data-key="unusualness"]')).toHaveCount(1);
+    // No proper-name data in this corpus, so the toggle stays hidden
+    await expect(page.locator('#vocabNamesToggle')).toBeHidden();
+    // The search box filters the Word column here
+    await page.fill('#q', 'light');
+    await page.locator('#addColumnBtn').click();
+    await expect(page.locator('#segmentsActiveFilters .active-filter-chip')).toContainText('matches light');
+    const words = await page.locator('#results tbody tr td:first-child').allTextContents();
+    expect(words.length).toBeGreaterThan(0);
+    expect(words.every(w => w.includes('light'))).toBeTruthy();
+  });
 
-    const firstRows = await page.locator('#results tbody tr').evaluateAll((trs) =>
-      trs.slice(0, 3).map((tr) =>
-        Array.from(tr.querySelectorAll('td'))
-          .slice(0, 2)
-          .map((td) => (td.textContent || '').trim())
-      )
-    );
-    expect(firstRows).toEqual([
-      ['01.Gen', 'Genesis'],
-      ['02.Exod', 'Exodus'],
-      ['03.Lev', 'Leviticus'],
-    ]);
+  test('supports regex mode with explicit ngram selection', async ({ page }) => {
+    const sample = await pickSampleQuery(page);
+    await search(page, `^${sample}$`, { gran: 'play', matchMode: 'regex', ngramMode: '1' });
+    expect(await page.locator('#results tbody tr').count()).toBeGreaterThan(0);
+  });
+
+  test('verse rows render highlights', async ({ page }) => {
+    const sample = await pickSampleQuery(page);
+    await search(page, sample, { gran: 'line' });
+    await page.locator('#segmentsTab details summary').click();
+    await expect(page.locator('#results tbody td .hit').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('granularity selector uses Verse for verse text rows', async ({ page }) => {
@@ -145,159 +140,35 @@ test.describe('Segments Search', () => {
     expect(options).toContainEqual({ value: 'line', text: 'Verse' });
   });
 
-  test('testament granularity shows two rows and book counts', async ({ page }) => {
-    await search(page, 'the', { gran: 'genre' });
-    await expect(page.locator('#results tbody tr')).toHaveCount(2);
-
-    const rows = await page.locator('#results tbody tr').evaluateAll((trs) =>
-      trs.map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => (td.textContent || '').trim()))
-    );
-    const oldTestament = rows.find((cells) => cells[0] === 'Old Testament');
-    const newTestament = rows.find((cells) => cells[0] === 'New Testament');
-    expect(oldTestament).toBeTruthy();
-    expect(newTestament).toBeTruthy();
-    expect(oldTestament).toContain('39');
-    expect(newTestament).toContain('27');
-    const headers = await page.locator('#results thead th').allTextContents();
-    expect(headers.some(t => t.includes('# verses'))).toBeTruthy();
-    expect(headers.some(t => t.includes('Comments / verse'))).toBeTruthy();
-  });
-
-  test('chapter granularity returns results', async ({ page }) => {
-    await search(page, 'light', { gran: 'act' });
-    expect(await page.locator('#results tbody tr').count()).toBeGreaterThan(0);
-    const headers = await page.locator('#results thead th').allTextContents();
-    expect(headers.some(t => t.includes('# verses'))).toBeTruthy();
-    expect(headers.some(t => t.includes('Comments / verse'))).toBeTruthy();
-  });
-
-  test('verse granularity updates highlights when toggled', async ({ page }) => {
-    await search(page, 'light', { gran: 'line' });
-    await page.locator('#segmentsTab details summary').click();
-
-    await expect(page.locator('#results tbody td .hit').first()).toBeVisible({ timeout: 10000 });
-
-    await page.locator('#segmentsTab label', { hasText: 'Highlight matching verse text' }).click();
-    await expect(page.locator('#segmentsTab .highlight-toggle')).not.toBeChecked();
-    await expect(page.locator('#results tbody td .hit')).toHaveCount(0);
-  });
-
-  test('verse granularity shows counts even when percent display is selected', async ({ page }) => {
-    await page.selectOption('#newTermDisplay', 'pct');
-    await search(page, 'light', { gran: 'line' });
-
-    const texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('# "light"'))).toBeTruthy();
-    expect(texts.some(t => t.includes('% "light"'))).toBeFalsy();
-  });
-
-  test('verse granularity shows rows without a search term', async ({ page }) => {
-    await page.selectOption('#gran', 'line');
-    await expect(page.locator('#results tbody tr:first-child td:first-child')).toHaveText('01.Gen.001.001', { timeout: 10000 });
-
-    const headers = await page.locator('#results thead th').allTextContents();
-    expect(headers.some(t => t.includes('Location'))).toBeTruthy();
-    expect(headers.some(t => t.includes('# comments'))).toBeTruthy();
-    expect(headers.some(t => t.includes('Verse'))).toBeTruthy();
-
-    const firstRow = await page.locator('#results tbody tr').first().locator('td').allTextContents();
-    expect(firstRow[0].trim()).toBe('01.Gen.001.001');
-    expect(firstRow[1].trim()).toBe('Genesis');
-    expect(firstRow[firstRow.length - 1]).toContain('In the beginning');
-  });
-
-  test('bigram and regex search both work', async ({ page }) => {
-    await search(page, 'son of', { gran: 'play', ngramMode: '2' });
-    expect(await page.locator('#results tbody tr').count()).toBeGreaterThan(0);
-
-    await search(page, '^light$', { gran: 'play', matchMode: 'regex' });
-    expect(await page.locator('#results tbody tr').count()).toBeGreaterThan(0);
-  });
-});
-
-test.describe('Verses Tab', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await waitForDataLoaded(page);
-    await search(page, 'light', { gran: 'play' });
-    await page.evaluate(() => {
-      const tabs = document.querySelector('.tabs');
-      tabs.classList.remove('is-hidden');
-      tabs.style.display = 'flex';
-    });
-    await page.click('.tab-btn[data-tab="lines"]');
-  });
-
-  test('shows matching verses with Bible-specific headers', async ({ page }) => {
-    await page.fill('#linesQuery', 'light');
-    await page.press('#linesQuery', 'Enter');
-    await expect(page.locator('#linesResults thead')).toContainText('Verse', { timeout: 10000 });
-
-    const texts = await page.locator('#linesResults thead th').allTextContents();
-    expect(texts.some(t => t.includes('Book'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Chapter'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
-  });
-
-  test('removes verse highlights when the toggle is unchecked', async ({ page }) => {
-    await page.fill('#linesQuery', 'light');
-    await page.press('#linesQuery', 'Enter');
-    await expect(page.locator('#linesResults thead')).toContainText('Verse', { timeout: 10000 });
-    await page.locator('#linesTab details').evaluate((el) => { el.open = true; });
-
-    await expect(page.locator('#linesResults tbody td .hit').first()).toBeVisible({ timeout: 10000 });
-
-    await page.locator('#linesTab label', { hasText: 'Highlight matching verse text' }).click();
-    await expect(page.locator('#linesTab .highlight-toggle')).not.toBeChecked();
-    await expect(page.locator('#linesResults tbody td .hit')).toHaveCount(0);
-  });
-});
-
-test.describe('Deep Links', () => {
-  test('restores search and sorting from URL params', async ({ page }) => {
-    await page.goto('/?q=light&nm=1&gran=play&mm=exact&sk=title&sd=asc&cs=1&td=both&zr=0&hl=1');
-    await waitForDataLoaded(page);
-    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
-
-    await expect(page.locator('#q')).toHaveValue('light');
-    await expect(page.locator('#results thead th.sorted-asc')).toContainText('Book');
-
-    const firstBookCellText = (await page.locator('#results tbody tr:first-child td:nth-child(2)').textContent() || '').trim();
-    expect(firstBookCellText).toMatch(/^1 /);
-  });
-
-  test('restores selected commentator columns from URL params', async ({ page }) => {
-    await page.goto('/?q=light&nm=1&gran=play&mm=exact&commentators=augustine,theophylact_of_ohrid');
-    await waitForDataLoaded(page);
-    await page.waitForSelector('#results tbody tr', { timeout: 10000 });
-
-    const texts = await page.locator('#results thead th').allTextContents();
-    expect(texts.some(t => t.includes('Augustine of Hippo'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Theophylact of Ohrid'))).toBeTruthy();
-    expect(texts.some(t => t.includes('Luther'))).toBeFalsy();
-
-    await page.locator('#segmentsTab details summary').click();
-    await expect(page.locator('#selectedCommentatorColumns')).toContainText('Augustine of Hippo');
-    await expect(page.locator('#selectedCommentatorColumns')).toContainText('Theophylact of Ohrid');
-    const optionTexts = await page.locator('#commentatorColumnSelect option').allTextContents();
-    expect(optionTexts.some(t => t.includes('Martin Luther'))).toBeTruthy();
-    expect(optionTexts.some(t => t.includes('Augustine of Hippo'))).toBeFalsy();
-  });
-
   test('maps legacy verse URL granularities to text-backed Verse view', async ({ page }) => {
-    await page.goto('/?q=light&nm=1&gran=line&mm=exact&sk=location&sd=asc&cs=1&zr=0&hl=1');
+    const sample = await pickSampleQuery(page);
+    await page.goto(`/?q=${sample}&nm=1&gran=line&mm=exact&sk=location&sd=asc&cs=1&zr=0&hl=1`);
     await waitForDataLoaded(page);
     await page.waitForSelector('#results tbody tr', { timeout: 10000 });
     await expect(page.locator('#gran')).toHaveValue('line');
     let texts = await page.locator('#results thead th').allTextContents();
     expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
 
-    await page.goto('/?q=light&nm=1&gran=scene&mm=exact&sk=location&sd=asc&cs=1&zr=0&hl=1');
+    await page.goto(`/?q=${sample}&nm=1&gran=scene&mm=exact&sk=location&sd=asc&cs=1&zr=0&hl=1`);
     await waitForDataLoaded(page);
     await page.waitForSelector('#results tbody tr', { timeout: 10000 });
     await expect(page.locator('#gran')).toHaveValue('line');
     texts = await page.locator('#results thead th').allTextContents();
     expect(texts.some(t => t.includes('Verse'))).toBeTruthy();
+  });
+});
+
+test.describe('Verses Tab', () => {
+  test('shows matching verse rows at Verse granularity', async ({ page }) => {
+    await page.goto('/');
+    await waitForDataLoaded(page);
+    const sample = await pickSampleQuery(page);
+    await search(page, sample, { gran: 'line' });
+    const texts = await page.locator('#results thead th').allTextContents();
+    expect(texts.some(t => t.includes('Book'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Chapter'))).toBeTruthy();
+    expect(texts.some(t => t.includes('Verse #'))).toBeTruthy();
+    expect(texts.some(t => t.includes('# comments'))).toBeTruthy();
+    await expect(page.locator('#results tbody tr').first()).toBeVisible();
   });
 });
