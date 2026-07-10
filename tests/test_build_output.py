@@ -232,5 +232,8 @@ class TestHapaxAndInstanceJson(unittest.TestCase):
         self.assertGreater(sum(c["hapax_count"] for c in chunks), 2000)
         instance = json.loads((DATA_DIR.parent / "instance.json").read_text())
         self.assertEqual(instance["id"], "kjv")
+        self.assertEqual(instance["created"], "2026-03-17")
         self.assertEqual(instance["stats"]["texts"], 66)
         self.assertEqual(instance["stats"]["segments"], 31102)
+        self.assertEqual(instance["stats"]["commentaries"], 313)
+        self.assertEqual(instance["stats"]["comments"], 86913)

@@ -4,6 +4,7 @@
   "title": "King James Bible",
   "tagline": "King James Bible Tabular Explorer",
   "language": "English",
+  "created": "2026-03-17",
   "url": "https://kjv.contabulate.org/",
   "source": "https://github.com/brainheart/kjv-contabulate",
   "text_label": "books",
