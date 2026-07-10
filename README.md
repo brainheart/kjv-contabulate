@@ -29,6 +29,7 @@ Outputs:
 - `docs/data/chunks.json` for verses
 - `docs/data/tokens.json`, `tokens2.json`, `tokens3.json`
 - `docs/lines/all_lines.json` for verse-text search
+- `docs/commentary/*.json` for lazy-loaded individual historical comments
 
 `docs/CNAME` is set to `kjv.contabulate.org`.
 
@@ -59,4 +60,5 @@ npx playwright test
 ## Notes
 
 - Generated JSON under `docs/data/` and `docs/lines/` is committed output for the static site.
+- Commentary counts and readable comment records come from the HistoricalChristianFaith Commentaries Database; see `commentary/README.md` for regeneration and rights handling.
 - The frontend keeps the original Contabulate interaction model where practical, but remaps the hierarchy to testament/book/chapter/verse.

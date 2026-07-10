@@ -13,7 +13,7 @@
       "url": "https://kjv.contabulate.org/?cs=1&zr=0&hl=1&q=law&nm=1&gran=genre&mm=&ts=%255B%257B%2522t%2522%253A%2522law%2522%252C%2522m%2522%253A%2522exact%2522%252C%2522n%2522%253A1%252C%2522d%2522%253A%2522pct%2522%257D%252C%257B%2522t%2522%253A%2522mercy%2522%252C%2522m%2522%253A%2522exact%2522%252C%2522n%2522%253A1%252C%2522d%2522%253A%2522pct%2522%257D%255D&qt=%255B%2522mercy%2522%255D&sk=t0_pct&sd=desc&co=genre%2Cnum_plays%2Cngram_count%2Ct0_pct%2Ct1_pct"
     }
   ],
-  "updated": "2026-07-07",
+  "updated": "2026-07-09",
   "stats": {
     "texts": 66,
     "text_label": "books",
